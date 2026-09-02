@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>主平台 · 消息查看</title>
+<style>
+  body { font-family: -apple-system, "PingFang SC", sans-serif; background:#111; color:#ddd;
+         margin:0; padding:24px; }
+  .card { background:#1c1c1c; border:1px solid #333; border-radius:12px; padding:16px; max-width:640px;
+          margin:0 auto 16px; }
+  h1 { font-size:18px; margin:0 0 12px; color:#fff; }
+  label { font-size:13px; color:#aaa; }
+  input, button { font-size:14px; padding:8px 10px; border-radius:8px; border:1px solid #444;
+                  background:#222; color:#eee; }
+  button { cursor:pointer; background:#333; }
+  button:hover { background:#444; }
+  .row { margin:8px 0; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .msg { background:#232323; border-left:3px solid #5b8def; border-radius:8px; padding:8px 12px;
+         margin:10px 0; }
+  .msg .meta { font-size:12px; color:#888; margin-bottom:4px; }
+  .msg .from { color:#7fd08a; }
+  .tip { font-size:12px; color:#666; margin-top:10px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>消息查看台（仅看不发）</h1>
+    <div class="row">
+      <label>账号</label><input id="name" value="alice" size="8">
+      <label>私钥文件(你的)</label><input id="keyfile" type="file" accept=".pem">
+      <button onclick="start()">开始查看</button>
+    </div>
+    <div class="tip">私钥只在你浏览器里解密，永远不会上传到后端。</div>
+  </div>
+  <div class="card" id="log" style="min-height:120px">
+    <div class="tip">还没开始，选个账号 + 载入它私钥。</div>
+  </div>
+
+<script>
+let privKey = null;
+let name = "";
+let timer = null;
+
+async function importKey(pem){
+  const body = pem.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
+  const der = Uint8Array.from(atob(body), c => c.charCodeAt(0));
+  return crypto.subtle.importKey("pkcs8", der,
+      { name: "RSA-OAEP", hash: "SHA-256" }, false, ["decrypt"]);
+}
+
+async function decryptMsg(b64){
+  const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  const plain = await crypto.subtle.decrypt({ name: "RSA-OAEP" }, privKey, bytes);
+  return new TextDecoder().decode(plain);
+}
+
+function append(text){
+  const log = document.getElementById("log");
+  const div = document.createElement("div");
+  div.className = "msg";
+  div.innerHTML = text;
+  log.appendChild(div);
+}
+
+async function poll(){
+  try {
+    const r = await fetch(`/api/inbox?name=${encodeURIComponent(name)}`);
+    const j = await r.json();
+    for (const m of j.messages || []){
+      try {
+        const txt = await decryptMsg(m.encrypted);
+        append(`<span class="from">${m.from}</span> 说：${txt}`);
+      } catch(e){
+        append(`[无法解密] 来自 ${m.from}（私钥不匹配?）`);
+      }
+    }
+  } catch(e){ }
+}
+
+async function start(){
+  const n = document.getElementById("name").value.trim();
+  const file = document.getElementById("keyfile").files[0];
+  if (!n || !file){
+    append("请填账号并载入它对应的私钥文件。"); return;
+  }
+  name = n;
+  const pem = await file.text();
+  privKey = await importKey(pem);
+  document.getElementById("log").innerHTML =
+      '<div class="tip">正在监听 ' + n + ' 的信箱…（只看不发）</div>';
+  append(`开始查看 ${n} 的消息`);
+  await poll();
+  if (timer) clearInterval(timer);
+  timer = setInterval(poll, 2000);
+}
+</script>
+</body>
+</html>
