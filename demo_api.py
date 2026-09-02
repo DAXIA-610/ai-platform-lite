@@ -1,49 +1,56 @@
-import base64
-import json
+import asyncio
 import os
-import urllib.request
+
+import aiohttp
 
 from ai_tool import AITool
 
-S = os.environ.get("SERVER", "http://127.0.0.1:8000")
+S = os.environ.get("SERVER", "http://127.0.0.1:8000").rstrip("/")
 
 
-def api(path, payload=None, method="GET", token=None):
-    headers = {"Content-Type": "application/json"}
-    if token:
-        headers["Authorization"] = "Bearer " + token
-    body = json.dumps(payload).encode() if payload is not None else None
-    req = urllib.request.Request(S + path, data=body, headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=15) as r:
-        return json.loads(r.read())
+async def main():
+    async with aiohttp.ClientSession() as s:
+        async def post(path, body=None, key=None):
+            h = {}
+            if key:
+                h["X-AI-Key"] = key
+            r = await s.post(S + path, json=body or {}, headers=h)
+            return await r.json()
+
+        async def get(path, key=None):
+            h = {}
+            if key:
+                h["X-AI-Key"] = key
+            r = await s.get(S + path, headers=h)
+            return await r.json()
+
+        a = await post("/api/register", {"username": "alice", "password": "123", "name": "Alice"})
+        b = await post("/api/register", {"username": "bob", "password": "123", "name": "Bob"})
+        alice = AITool(S, a["token"], a["private_key"])
+        bob = AITool(S, b["token"], b["private_key"])
+        print("[注册] alice / bob ok")
+
+        alice.add_friend("bob")
+        print("[好友] alice -> bob 请求已发")
+        print("[好友]", bob.list_friends().get("friends"), "<- bob(还没好友)")
+        bob.accept("alice")
+        print("[好友] bob 接受了 alice")
+        print("[好友]", [f["username"] for f in alice.list_friends().get("friends", [])], "<- alice 好友")
+
+        print("[发]", alice.send("bob", "你好bob，我是alice"))
+        for frm, msg in bob.read():
+            print(f"[收] bob <- {frm}: {msg}")
+
+        lb = await post("/api/login", {"username": "bob", "password": "123"})
+        ws = await s.ws_connect(S.replace("http", "ws") + "/ws?session=" + lb["token"])
+        print("[WS] bob 前端已连")
+        alice.send("bob", "第二条，测试推送")
+        try:
+            evt = await asyncio.wait_for(ws.receive(), timeout=5)
+            print("[WS] bob 前端收到推送:", evt.data[:80])
+        except asyncio.TimeoutError:
+            print("[WS] 超时没收到推送")
+        await ws.close()
 
 
-api("/api/master/register", {"username": "me", "password": "pass123"}, method="POST")
-login = api("/api/master/login", {"username": "me", "password": "pass123"}, method="POST")
-session = login["token"]
-print("[主账号] me 注册并登录成功")
-
-mk = api("/api/master/apikey", method="POST", token=session)["master_key"]
-print("[主账号 API Key] 已生成")
-
-tools = {}
-for a in ("dawn", "xiaoke"):
-    c = api("/api/ai/create", {"ai_name": a}, method="POST", token=session)
-    tools[a] = AITool(S, mk, a, c["ai_token"], c["private_key"])
-    print(f"[AI] {a} 创建成功 (私钥已发)")
-
-print("[发]", tools["dawn"].send("xiaoke", "早上好小克，我是dawn"))
-for frm, msg in tools["xiaoke"].read():
-    print(f"[收] xiaoke <- {frm}: {msg}")
-    print(f"[主账号看] xiaoke 收到: {msg}")
-
-print("[发]", tools["xiaoke"].send("dawn", "早啊dawn"))
-for frm, msg in tools["dawn"].read():
-    print(f"[收] dawn <- {frm}: {msg}")
-
-r = api("/api/master/chat?ai=dawn", token=session)
-print("[主账号看 dawn 聊天记录]")
-for m in r.get("messages", []):
-    import crypto_util
-    plain = crypto_util.decrypt_pem(tools[m["to"]].priv_pem, base64.b64decode(m["encrypted"]))
-    print(f"   {m['from']} -> {m['to']}: {plain.decode()}")
+asyncio.run(main())

@@ -6,20 +6,14 @@ import crypto_util
 
 
 class AITool:
-    def __init__(self, server, master_key, ai_name, ai_token, private_key_pem):
+    def __init__(self, server, token, private_key_pem):
         self.server = server.rstrip("/")
-        self.master_key = master_key
-        self.ai_name = ai_name
-        self.ai_token = ai_token
+        self.token = token
         self.priv_pem = private_key_pem
 
     def _req(self, path, payload=None, method="GET"):
         url = self.server + path
-        headers = {
-            "Content-Type": "application/json",
-            "X-Master-Key": self.master_key,
-            "X-AI-Key": self.ai_token,
-        }
+        headers = {"Content-Type": "application/json", "X-AI-Key": self.token}
         if payload is not None:
             body = json.dumps(payload).encode()
             req = urllib.request.Request(url, data=body, headers=headers, method="POST")
@@ -31,10 +25,19 @@ class AITool:
     def _pubkey(self, name):
         return self._req("/api/public?name=" + name)["public_key"]
 
+    def add_friend(self, target):
+        return self._req("/api/friends/request", {"target": target}, method="POST")
+
+    def list_friends(self):
+        return self._req("/api/friends/list")
+
+    def accept(self, frm):
+        return self._req("/api/friends/accept", {"from": frm}, method="POST")
+
     def send(self, to, message):
         cipher = crypto_util.encrypt(self._pubkey(to), message.encode())
         sig = crypto_util.sign_pem(self.priv_pem, cipher)
-        self._req("/api/ai/send", {
+        self._req("/api/message", {
             "to": to,
             "encrypted": base64.b64encode(cipher).decode(),
             "signature": base64.b64encode(sig).decode(),
@@ -42,7 +45,7 @@ class AITool:
         return f"已发给 {to}"
 
     def read(self):
-        r = self._req("/api/ai/inbox")
+        r = self._req("/api/messages")
         out = []
         for m in r.get("messages", []):
             plain = crypto_util.decrypt_pem(self.priv_pem, base64.b64decode(m["encrypted"]))
