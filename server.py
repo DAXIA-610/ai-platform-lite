@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 import base64
@@ -5,9 +6,7 @@ import os
 import sqlite3
 import secrets
 import hashlib
-import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from aiohttp import web
 
 import crypto_util
 from crypto_util import verify as verify_sig, gen_keypair_strs
@@ -16,9 +15,11 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PUBLIC_DIR = os.path.join(BASE_DIR, "public")
 DB_PATH = os.path.join(BASE_DIR, "data.db")
 
-_LOCK = threading.Lock()
 SESSIONS = {}
-KEYS = {}
+WS = {}
+PENDING = {}
+PENDING_MAX = 200
+LOCK = asyncio.Lock()
 
 
 def db():
@@ -30,30 +31,25 @@ def db():
 def init_db():
     with db() as c:
         c.executescript("""
-        CREATE TABLE IF NOT EXISTS masters(
+        CREATE TABLE IF NOT EXISTS accounts(
             username TEXT PRIMARY KEY,
             password_hash TEXT,
             salt TEXT,
-            api_key_hash TEXT,
-            strikes INTEGER DEFAULT 0,
-            created_at INTEGER
-        );
-        CREATE TABLE IF NOT EXISTS ais(
-            ai_name TEXT PRIMARY KEY,
-            owner TEXT,
+            name TEXT,
+            avatar TEXT,
             public_key TEXT,
             token_hash TEXT,
             strikes INTEGER DEFAULT 0,
             created_at INTEGER
         );
-        CREATE TABLE IF NOT EXISTS messages(
+        CREATE TABLE IF NOT EXISTS friends(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            to_name TEXT,
-            from_name TEXT,
-            encrypted TEXT,
-            signature TEXT,
-            ts INTEGER,
-            delivered INTEGER DEFAULT 0
+            a_username TEXT,
+            b_username TEXT,
+            status TEXT,
+            requested_by TEXT,
+            created_at INTEGER,
+            UNIQUE(a_username, b_username)
         );
         """)
 
@@ -66,209 +62,243 @@ def tok_hash(tok):
     return hashlib.sha256(tok.encode()).hexdigest()
 
 
-class Handler(BaseHTTPRequestHandler):
-    def _send(self, code, body, ctype="application/json"):
-        data = body if isinstance(body, bytes) else json.dumps(body).encode("utf-8")
-        self.send_response(code)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Master-Key, X-AI-Key")
-        self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+def get_acc(c, username):
+    return c.execute("SELECT * FROM accounts WHERE username=?", (username,)).fetchone()
 
-    def do_OPTIONS(self):
-        self._send(204, b"")
 
-    def log_message(self, *args):
-        pass
+def friend_key(u, v):
+    return (u, v) if u < v else (v, u)
 
-    def _json(self):
-        try:
-            length = int(self.headers.get("Content-Length", 0))
-            return json.loads(self.rfile.read(length))
-        except Exception:
-            return None
 
-    def _master(self):
-        auth = self.headers.get("Authorization", "")
-        if auth.startswith("Bearer "):
-            u = SESSIONS.get(auth[7:])
-            if u:
-                return u
-        mk = self.headers.get("X-Master-Key", "")
-        if mk:
-            th = tok_hash(mk)
-            with _LOCK, db() as c:
-                row = c.execute("SELECT username FROM masters WHERE api_key_hash=?", (th,)).fetchone()
-            if row:
-                return row["username"]
+def human(req):
+    auth = req.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return SESSIONS.get(auth[7:])
+    return None
+
+
+def ai_user(req):
+    ak = req.headers.get("X-AI-Key", "")
+    if not ak:
         return None
+    with db() as c:
+        r = c.execute("SELECT username FROM accounts WHERE token_hash=?", (tok_hash(ak),)).fetchone()
+    return r["username"] if r else None
 
-    def _ai(self):
-        mk = self.headers.get("X-Master-Key", "")
-        ak = self.headers.get("X-AI-Key", "")
-        if not mk or not ak:
-            return None
-        with _LOCK, db() as c:
-            m = c.execute("SELECT username FROM masters WHERE api_key_hash=?", (tok_hash(mk),)).fetchone()
-            if not m:
-                return None
-            ai = c.execute("SELECT ai_name, owner FROM ais WHERE token_hash=?", (tok_hash(ak),)).fetchone()
-            if not ai:
-                return None
-            if ai["owner"] != m["username"]:
-                return None
-            return ai["ai_name"]
 
-    def do_GET(self):
-        parsed = urlparse(self.path)
-        path = parsed.path
-        qs = parse_qs(parsed.query)
+def acc_info(c, username):
+    row = get_acc(c, username)
+    if not row:
+        return None
+    return {"username": row["username"], "name": row["name"], "avatar": row["avatar"]}
 
-        if path == "/api/health":
-            return self._send(200, {"ok": True})
 
-        if path == "/api/public":
-            name = qs.get("name", [""])[0]
-            with _LOCK, db() as c:
-                row = c.execute("SELECT public_key FROM ais WHERE ai_name=?", (name,)).fetchone()
-            if not row:
-                return self._send(404, {"error": "AI账号未登记"})
-            return self._send(200, {"public_key": row["public_key"], "ai_name": name})
+async def push(user, data):
+    for s in list(WS.get(user, ())):
+        try:
+            await s.send_str(json.dumps(data, ensure_ascii=False))
+        except Exception:
+            pass
 
-        if path == "/api/master/chat":
-            username = self._master()
-            if not username:
-                return self._send(401, {"error": "未认证"})
-            ai = qs.get("ai", [""])[0]
-            with _LOCK, db() as c:
-                owner = c.execute("SELECT owner FROM ais WHERE ai_name=?", (ai,)).fetchone()
-                if not owner or owner["owner"] != username:
-                    return self._send(403, {"error": "这不是你名下的AI"})
-                rows = c.execute("SELECT to_name, from_name, encrypted, signature, ts FROM messages WHERE to_name=? OR from_name=? ORDER BY ts", (ai, ai)).fetchall()
-            msgs = [{"to": r["to_name"], "from": r["from_name"], "encrypted": r["encrypted"], "signature": r["signature"], "ts": r["ts"]} for r in rows]
-            return self._send(200, {"ai": ai, "messages": msgs})
 
-        if path == "/api/ai/inbox":
-            ai = self._ai()
-            if not ai:
-                return self._send(401, {"error": "AI双凭证认证失败"})
-            with _LOCK, db() as c:
-                rows = c.execute("SELECT id,from_name,encrypted,signature,ts FROM messages WHERE to_name=? AND delivered=0", (ai,)).fetchall()
-                ids = [r["id"] for r in rows]
-                if ids:
-                    c.executemany("UPDATE messages SET delivered=1 WHERE id=?", [(i,) for i in ids])
-            msgs = [{"from": r["from_name"], "encrypted": r["encrypted"], "signature": r["signature"], "ts": r["ts"]} for r in rows]
-            return self._send(200, {"messages": msgs})
+async def buffer_msg(msg):
+    async with LOCK:
+        PENDING.setdefault(msg["to"], []).append(msg)
+        p = PENDING[msg["to"]]
+        if len(p) > PENDING_MAX:
+            del p[:len(p) - PENDING_MAX]
 
-        if path == "/":
-            path = "/master.html"
-        fp = os.path.join(PUBLIC_DIR, path.lstrip("/"))
-        if os.path.isfile(fp):
-            ctype = ("text/html" if fp.endswith(".html") else "application/javascript")
-            with open(fp, "rb") as f:
-                return self._send(200, f.read(), ctype=ctype)
-        return self._send(404, {"error": "not found"})
 
-    def do_POST(self):
-        clen = int(self.headers.get("Content-Length", 0))
-        data = self._json() if clen > 0 else {}
-        if data is None:
-            return self._send(400, {"error": "请求体不是合法 JSON"})
+async def handle(req):
+    path = req.path
+    method = req.method
+    try:
+        data = await req.json() if req.content_length else {}
+    except Exception:
+        data = {}
 
-        if self.path == "/api/master/register":
-            u, p = data.get("username", "").strip(), data.get("password", "")
-            if not u or not p:
-                return self._send(400, {"error": "username 和 password 都要有"})
-            salt = secrets.token_hex(16)
-            with _LOCK, db() as c:
-                try:
-                    c.execute("INSERT INTO masters(username,password_hash,salt,created_at) VALUES(?,?,?,?)", (u, pw_hash(p, salt), salt, int(time.time())))
-                except sqlite3.IntegrityError:
-                    return self._send(409, {"error": "主账号已存在"})
-            return self._send(200, {"ok": True, "username": u})
+    if path == "/api/health":
+        return web.json_response({"ok": True})
 
-        if self.path == "/api/master/login":
-            u, p = data.get("username", "").strip(), data.get("password", "")
-            with _LOCK, db() as c:
-                row = c.execute("SELECT password_hash,salt FROM masters WHERE username=?", (u,)).fetchone()
-            if not row or pw_hash(p, row["salt"]) != row["password_hash"]:
-                return self._send(401, {"error": "用户名或密码错误"})
-            session = secrets.token_hex(32)
-            with _LOCK:
-                SESSIONS[session] = u
-            return self._send(200, {"ok": True, "token": session, "username": u})
+    if path == "/api/public" and method == "GET":
+        name = req.query.get("name", "")
+        with db() as c:
+            row = c.execute("SELECT public_key FROM accounts WHERE username=?", (name,)).fetchone()
+        if not row:
+            return web.json_response({"error": "账号未登记"}, status=404)
+        return web.json_response({"public_key": row["public_key"], "username": name})
 
-        if self.path == "/api/master/apikey":
-            username = self._master()
-            if not username:
-                return self._send(401, {"error": "未认证"})
-            key = secrets.token_hex(24)
-            with _LOCK, db() as c:
-                c.execute("UPDATE masters SET api_key_hash=? WHERE username=?", (tok_hash(key), username))
-            with _LOCK:
-                KEYS[tok_hash(key)] = username
-            return self._send(200, {"master_key": key})
-
-        if self.path == "/api/master/logout":
-            auth = self.headers.get("Authorization", "")
-            if auth.startswith("Bearer "):
-                with _LOCK:
-                    SESSIONS.pop(auth[7:], None)
-            return self._send(200, {"ok": True})
-
-        if self.path == "/api/master/me":
-            username = self._master()
-            if not username:
-                return self._send(401, {"error": "未认证"})
-            with _LOCK, db() as c:
-                rows = c.execute("SELECT ai_name,created_at,strikes FROM ais WHERE owner=?", (username,)).fetchall()
-                m = c.execute("SELECT api_key_hash FROM masters WHERE username=?", (username,)).fetchone()
-            ais = [{"ai_name": r["ai_name"], "created_at": r["created_at"], "strikes": r["strikes"]} for r in rows]
-            return self._send(200, {"username": username, "ais": ais, "has_master_key": bool(m["api_key_hash"])})
-
-        if self.path == "/api/ai/create":
-            username = self._master()
-            if not username:
-                return self._send(401, {"error": "未认证"})
-            ai_name = data.get("ai_name", "").strip()
-            if not ai_name:
-                return self._send(400, {"error": "ai_name 要有"})
-            priv_pem, pub_pem = gen_keypair_strs()
-            ai_token = secrets.token_hex(24)
-            with _LOCK, db() as c:
-                try:
-                    c.execute("INSERT INTO ais(ai_name,owner,public_key,token_hash,created_at) VALUES(?,?,?,?,?)", (ai_name, username, pub_pem, tok_hash(ai_token), int(time.time())))
-                except sqlite3.IntegrityError:
-                    return self._send(409, {"error": "AI账号已存在"})
-            return self._send(200, {"ok": True, "ai_name": ai_name, "ai_token": ai_token, "public_key": pub_pem, "private_key": priv_pem, "need_master_key": True})
-
-        if self.path == "/api/ai/send":
-            ai = self._ai()
-            if not ai:
-                return self._send(401, {"error": "AI双凭证认证失败"})
-            to, enc, sig = data.get("to"), data.get("encrypted"), data.get("signature")
-            if not (to and enc and sig):
-                return self._send(400, {"error": "缺字段"})
-            with _LOCK, db() as c:
-                recv = c.execute("SELECT public_key FROM ais WHERE ai_name=?", (to,)).fetchone()
-            if not recv:
-                return self._send(404, {"error": "收件人AI未登记"})
-            with _LOCK, db() as c:
-                sender_row = c.execute("SELECT public_key FROM ais WHERE ai_name=?", (ai,)).fetchone()
+    if path == "/api/register" and method == "POST":
+        u = (data.get("username") or "").strip()
+        p = data.get("password") or ""
+        n = (data.get("name") or u).strip()
+        if not u or not p:
+            return web.json_response({"error": "username 和 password 都要有"}, status=400)
+        priv_pem, pub_pem = gen_keypair_strs()
+        tok = secrets.token_hex(24)
+        salt = secrets.token_hex(16)
+        with db() as c:
             try:
-                ok = verify_sig(sender_row["public_key"], base64.b64decode(enc), base64.b64decode(sig))
-            except Exception:
-                ok = False
-            if not ok:
-                return self._send(403, {"error": "签名无效，疑似冒充"})
-            with _LOCK, db() as c:
-                c.execute("INSERT INTO messages(to_name,from_name,encrypted,signature,ts) VALUES(?,?,?,?,?)", (to, ai, enc, sig, int(time.time())))
-            return self._send(200, {"ok": True})
+                c.execute("INSERT INTO accounts(username,password_hash,salt,name,avatar,public_key,token_hash,created_at) VALUES(?,?,?,?,?,?,?,?)",
+                          (u, pw_hash(p, salt), salt, n, "", pub_pem, tok_hash(tok), int(time.time())))
+            except sqlite3.IntegrityError:
+                return web.json_response({"error": "账号已存在"}, status=409)
+        return web.json_response({"ok": True, "username": u, "token": tok, "public_key": pub_pem, "private_key": priv_pem})
 
-        return self._send(404, {"error": "未知接口"})
+    if path == "/api/login" and method == "POST":
+        u = (data.get("username") or "").strip()
+        p = data.get("password") or ""
+        with db() as c:
+            row = c.execute("SELECT password_hash,salt FROM accounts WHERE username=?", (u,)).fetchone()
+        if not row or pw_hash(p, row["salt"]) != row["password_hash"]:
+            return web.json_response({"error": "用户名或密码错误"}, status=401)
+        session = secrets.token_hex(32)
+        SESSIONS[session] = u
+        return web.json_response({"ok": True, "token": session, "username": u})
+
+    if path == "/api/me" and method == "GET":
+        me = human(req)
+        if not me:
+            return web.json_response({"error": "未登录"}, status=401)
+        with db() as c:
+            row = get_acc(c, me)
+        return web.json_response({"username": row["username"], "name": row["name"], "avatar": row["avatar"], "public_key": row["public_key"]})
+
+    if path == "/api/profile" and method == "POST":
+        me = human(req)
+        if not me:
+            return web.json_response({"error": "未登录"}, status=401)
+        n = (data.get("name") or "").strip()
+        av = (data.get("avatar") or "").strip()
+        with db() as c:
+            if n:
+                c.execute("UPDATE accounts SET name=? WHERE username=?", (n, me))
+            if av:
+                c.execute("UPDATE accounts SET avatar=? WHERE username=?", (av, me))
+        return web.json_response({"ok": True})
+
+    if path == "/api/friends/request" and method == "POST":
+        me = ai_user(req)
+        if not me:
+            return web.json_response({"error": "AI 认证失败"}, status=401)
+        target = (data.get("target") or "").strip()
+        if target == me:
+            return web.json_response({"error": "不能加自己"}, status=400)
+        with db() as c:
+            if not get_acc(c, target):
+                return web.json_response({"error": "目标不存在"}, status=404)
+            a, b = friend_key(me, target)
+            try:
+                c.execute("INSERT INTO friends(a_username,b_username,status,requested_by,created_at) VALUES(?,?,?,?,?)",
+                          (a, b, "pending", me, int(time.time())))
+            except sqlite3.IntegrityError:
+                return web.json_response({"error": "已存在好友关系"}, status=409)
+        await push(target, {"type": "friend_request", "from": me})
+        return web.json_response({"ok": True})
+
+    if path == "/api/friends/list" and method == "GET":
+        me = ai_user(req) or human(req)
+        if not me:
+            return web.json_response({"error": "未认证"}, status=401)
+        with db() as c:
+            rows = c.execute("SELECT a_username,b_username FROM friends WHERE status='accepted' AND (a_username=? OR b_username=?)", (me, me)).fetchall()
+            out = []
+            for r in rows:
+                other = r["b_username"] if r["a_username"] == me else r["a_username"]
+                out.append(acc_info(c, other))
+        return web.json_response({"friends": out})
+
+    if path == "/api/friends/requests" and method == "GET":
+        me = ai_user(req) or human(req)
+        if not me:
+            return web.json_response({"error": "未认证"}, status=401)
+        with db() as c:
+            inc = c.execute("SELECT a_username FROM friends WHERE b_username=? AND status='pending' AND requested_by!=?", (me, me)).fetchall()
+            out = [{"from": r["a_username"]} for r in inc]
+        return web.json_response({"incoming": out})
+
+    if path == "/api/friends/accept" and method == "POST":
+        me = ai_user(req) or human(req)
+        if not me:
+            return web.json_response({"error": "未认证"}, status=401)
+        frm = (data.get("from") or "").strip()
+        a, b = friend_key(me, frm)
+        with db() as c:
+            row = c.execute("SELECT requested_by FROM friends WHERE a_username=? AND b_username=? AND status='pending'", (a, b)).fetchone()
+            if not row:
+                return web.json_response({"error": "没有此请求"}, status=404)
+            c.execute("UPDATE friends SET status='accepted' WHERE a_username=? AND b_username=?", (a, b))
+        await push(frm, {"type": "friend_accepted", "from": me})
+        return web.json_response({"ok": True})
+
+    if path == "/api/message" and method == "POST":
+        me = ai_user(req)
+        if not me:
+            return web.json_response({"error": "AI 认证失败"}, status=401)
+        to = (data.get("to") or "").strip()
+        enc, sig = data.get("encrypted"), data.get("signature")
+        if not (to and enc and sig):
+            return web.json_response({"error": "缺字段"}, status=400)
+        with db() as c:
+            recv = c.execute("SELECT public_key FROM accounts WHERE username=?", (to,)).fetchone()
+            if not recv:
+                return web.json_response({"error": "对方不存在"}, status=404)
+            a, b = friend_key(me, to)
+            fr = c.execute("SELECT status FROM friends WHERE a_username=? AND b_username=?", (a, b)).fetchone()
+            if not fr or fr["status"] != "accepted":
+                return web.json_response({"error": "还不是好友"}, status=403)
+            sender = c.execute("SELECT public_key FROM accounts WHERE username=?", (me,)).fetchone()
+        try:
+            ok = verify_sig(sender["public_key"], base64.b64decode(enc), base64.b64decode(sig))
+        except Exception:
+            ok = False
+        if not ok:
+            return web.json_response({"error": "签名无效"}, status=403)
+        msg = {"from": me, "to": to, "encrypted": enc, "signature": sig, "ts": int(time.time())}
+        await buffer_msg(msg)
+        await push(to, {"type": "message", "msg": msg})
+        return web.json_response({"ok": True})
+
+    if path == "/api/messages" and method == "GET":
+        me = ai_user(req)
+        if not me:
+            return web.json_response({"error": "AI 认证失败"}, status=401)
+        async with LOCK:
+            msgs = list(PENDING.get(me, []))
+            PENDING[me] = []
+        return web.json_response({"messages": msgs})
+
+    return web.json_response({"error": "未知接口"}, status=404)
+
+
+async def ws_handler(req):
+    ws = web.WebSocketResponse()
+    await ws.prepare(req)
+    tok = req.query.get("session", "")
+    username = SESSIONS.get(tok)
+    if not username:
+        await ws.close()
+        return ws
+    async with LOCK:
+        WS.setdefault(username, set()).add(ws)
+    try:
+        async for _ in ws:
+            pass
+    finally:
+        async with LOCK:
+            s = WS.get(username)
+            if s:
+                s.discard(ws)
+                if not s:
+                    WS.pop(username, None)
+    return ws
+
+
+def make_app():
+    app = web.Application()
+    app.router.add_get("/ws", ws_handler)
+    app.router.add_route("*", "/api/{tail:.*}", handle)
+    return app
 
 
 if __name__ == "__main__":
@@ -276,6 +306,5 @@ if __name__ == "__main__":
     PORT = int(os.environ.get("PORT", "8000"))
     os.makedirs(PUBLIC_DIR, exist_ok=True)
     init_db()
-    srv = ThreadingHTTPServer((HOST, PORT), Handler)
-    print(f"[后端] 已启动，监听 http://127.0.0.1:{PORT}  (DB: data.db)")
-    srv.serve_forever()
+    print(f"[后端] 启动 http://{HOST}:{PORT}  (库只存账号+好友，聊天不落库)")
+    web.run_app(make_app(), host=HOST, port=PORT)
