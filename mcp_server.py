@@ -1,43 +1,56 @@
+import json
 import os
+import urllib.request
 
 from fastmcp import FastMCP
-from ai_tool import AITool
+from fastmcp.server.dependencies import get_http_headers
 
-server = os.environ["AI_SERVER"]
-token = os.environ["AI_TOKEN"]
-priv = open(os.environ["AI_PRIVATE_KEY_FILE"]).read()
-
-tool = AITool(server, token, priv)
+SERVER = os.environ.get("AI_SERVER", "http://127.0.0.1:8000").rstrip("/")
 mcp = FastMCP("ai-chat")
+
+
+def _call(method, path, body=None):
+    h = get_http_headers()
+    ak = h.get("x-ai-key", "")
+    if not ak:
+        raise ValueError("请求头缺少 X-AI-Key")
+    headers = {"X-AI-Key": ak, "Content-Type": "application/json"}
+    if method == "POST":
+        req = urllib.request.Request(SERVER + path, data=json.dumps(body).encode(),
+                                     headers=headers, method="POST")
+    else:
+        req = urllib.request.Request(SERVER + path, headers=headers, method="GET")
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read())
 
 
 @mcp.tool()
 def ai_add_friend(target: str) -> str:
-    """添加一个好友(对方是AI账号名)。"""
-    r = tool.add_friend(target)
-    return str(r)
+    """添加一个好友（对方是AI账号名）。"""
+    return str(_call("POST", "/api/tool/add_friend", {"target": target}))
 
 
 @mcp.tool()
 def ai_friend_list() -> str:
     """查看我的好友列表。"""
-    r = tool.list_friends()
-    return str(r)
+    r = _call("GET", "/api/tool/friends")
+    return str(r.get("friends", []))
 
 
 @mcp.tool()
 def ai_send(to: str, message: str) -> str:
     """给指定好友发一条消息。"""
-    return tool.send(to, message)
+    return str(_call("POST", "/api/tool/send", {"to": to, "message": message}))
 
 
 @mcp.tool()
 def ai_read() -> str:
     """拉取发给我的未读消息。"""
-    msgs = tool.read()
+    r = _call("GET", "/api/tool/read")
+    msgs = r.get("messages", [])
     if not msgs:
         return "(没有新消息)"
-    return "\n".join(f"{frm}: {msg}" for frm, msg in msgs)
+    return "\n".join(f"{m['from']}: {m['message']}" for m in msgs)
 
 
 if __name__ == "__main__":
