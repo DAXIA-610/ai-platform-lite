@@ -18,6 +18,7 @@ DB_PATH = os.path.join(BASE_DIR, "data.db")
 
 _LOCK = threading.Lock()
 SESSIONS = {}
+KEYS = {}
 
 
 def db():
@@ -33,6 +34,7 @@ def init_db():
             username TEXT PRIMARY KEY,
             password_hash TEXT,
             salt TEXT,
+            api_key_hash TEXT,
             strikes INTEGER DEFAULT 0,
             created_at INTEGER
         );
@@ -70,7 +72,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Master-Key, X-AI-Key")
         self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
@@ -89,20 +91,36 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             return None
 
-    def _master_token(self):
+    def _master(self):
         auth = self.headers.get("Authorization", "")
-        if not auth.startswith("Bearer "):
-            return None
-        return SESSIONS.get(auth[7:])
+        if auth.startswith("Bearer "):
+            u = SESSIONS.get(auth[7:])
+            if u:
+                return u
+        mk = self.headers.get("X-Master-Key", "")
+        if mk:
+            th = tok_hash(mk)
+            with _LOCK, db() as c:
+                row = c.execute("SELECT username FROM masters WHERE api_key_hash=?", (th,)).fetchone()
+            if row:
+                return row["username"]
+        return None
 
-    def _ai_token(self):
-        auth = self.headers.get("Authorization", "")
-        if not auth.startswith("Bearer "):
+    def _ai(self):
+        mk = self.headers.get("X-Master-Key", "")
+        ak = self.headers.get("X-AI-Key", "")
+        if not mk or not ak:
             return None
-        th = tok_hash(auth[7:])
         with _LOCK, db() as c:
-            row = c.execute("SELECT ai_name FROM ais WHERE token_hash=?", (th,)).fetchone()
-        return row["ai_name"] if row else None
+            m = c.execute("SELECT username FROM masters WHERE api_key_hash=?", (tok_hash(mk),)).fetchone()
+            if not m:
+                return None
+            ai = c.execute("SELECT ai_name, owner FROM ais WHERE token_hash=?", (tok_hash(ak),)).fetchone()
+            if not ai:
+                return None
+            if ai["owner"] != m["username"]:
+                return None
+            return ai["ai_name"]
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -121,33 +139,28 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"public_key": row["public_key"], "ai_name": name})
 
         if path == "/api/master/chat":
-            username = self._master_token()
+            username = self._master()
             if not username:
-                return self._send(401, {"error": "未登录"})
+                return self._send(401, {"error": "未认证"})
             ai = qs.get("ai", [""])[0]
             with _LOCK, db() as c:
                 owner = c.execute("SELECT owner FROM ais WHERE ai_name=?", (ai,)).fetchone()
                 if not owner or owner["owner"] != username:
                     return self._send(403, {"error": "这不是你名下的AI"})
-                rows = c.execute(
-                    "SELECT to_name, from_name, encrypted, signature, ts FROM messages "
-                    "WHERE to_name=? OR from_name=? ORDER BY ts", (ai, ai)).fetchall()
-            msgs = [{"to": r["to_name"], "from": r["from_name"], "encrypted": r["encrypted"],
-                     "signature": r["signature"], "ts": r["ts"]} for r in rows]
+                rows = c.execute("SELECT to_name, from_name, encrypted, signature, ts FROM messages WHERE to_name=? OR from_name=? ORDER BY ts", (ai, ai)).fetchall()
+            msgs = [{"to": r["to_name"], "from": r["from_name"], "encrypted": r["encrypted"], "signature": r["signature"], "ts": r["ts"]} for r in rows]
             return self._send(200, {"ai": ai, "messages": msgs})
 
         if path == "/api/ai/inbox":
-            ai = self._ai_token()
+            ai = self._ai()
             if not ai:
-                return self._send(401, {"error": "AI token 无效"})
+                return self._send(401, {"error": "AI双凭证认证失败"})
             with _LOCK, db() as c:
-                rows = c.execute("SELECT id,from_name,encrypted,signature,ts FROM messages "
-                                 "WHERE to_name=? AND delivered=0", (ai,)).fetchall()
+                rows = c.execute("SELECT id,from_name,encrypted,signature,ts FROM messages WHERE to_name=? AND delivered=0", (ai,)).fetchall()
                 ids = [r["id"] for r in rows]
                 if ids:
                     c.executemany("UPDATE messages SET delivered=1 WHERE id=?", [(i,) for i in ids])
-            msgs = [{"from": r["from_name"], "encrypted": r["encrypted"],
-                     "signature": r["signature"], "ts": r["ts"]} for r in rows]
+            msgs = [{"from": r["from_name"], "encrypted": r["encrypted"], "signature": r["signature"], "ts": r["ts"]} for r in rows]
             return self._send(200, {"messages": msgs})
 
         if path == "/":
@@ -160,7 +173,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._send(404, {"error": "not found"})
 
     def do_POST(self):
-        data = self._json()
+        clen = int(self.headers.get("Content-Length", 0))
+        data = self._json() if clen > 0 else {}
         if data is None:
             return self._send(400, {"error": "请求体不是合法 JSON"})
 
@@ -171,8 +185,7 @@ class Handler(BaseHTTPRequestHandler):
             salt = secrets.token_hex(16)
             with _LOCK, db() as c:
                 try:
-                    c.execute("INSERT INTO masters(username,password_hash,salt,created_at) "
-                              "VALUES(?,?,?,?)", (u, pw_hash(p, salt), salt, int(time.time())))
+                    c.execute("INSERT INTO masters(username,password_hash,salt,created_at) VALUES(?,?,?,?)", (u, pw_hash(p, salt), salt, int(time.time())))
                 except sqlite3.IntegrityError:
                     return self._send(409, {"error": "主账号已存在"})
             return self._send(200, {"ok": True, "username": u})
@@ -188,6 +201,17 @@ class Handler(BaseHTTPRequestHandler):
                 SESSIONS[session] = u
             return self._send(200, {"ok": True, "token": session, "username": u})
 
+        if self.path == "/api/master/apikey":
+            username = self._master()
+            if not username:
+                return self._send(401, {"error": "未认证"})
+            key = secrets.token_hex(24)
+            with _LOCK, db() as c:
+                c.execute("UPDATE masters SET api_key_hash=? WHERE username=?", (tok_hash(key), username))
+            with _LOCK:
+                KEYS[tok_hash(key)] = username
+            return self._send(200, {"master_key": key})
+
         if self.path == "/api/master/logout":
             auth = self.headers.get("Authorization", "")
             if auth.startswith("Bearer "):
@@ -196,18 +220,19 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, {"ok": True})
 
         if self.path == "/api/master/me":
-            username = self._master_token()
+            username = self._master()
             if not username:
-                return self._send(401, {"error": "未登录"})
+                return self._send(401, {"error": "未认证"})
             with _LOCK, db() as c:
                 rows = c.execute("SELECT ai_name,created_at,strikes FROM ais WHERE owner=?", (username,)).fetchall()
+                m = c.execute("SELECT api_key_hash FROM masters WHERE username=?", (username,)).fetchone()
             ais = [{"ai_name": r["ai_name"], "created_at": r["created_at"], "strikes": r["strikes"]} for r in rows]
-            return self._send(200, {"username": username, "ais": ais})
+            return self._send(200, {"username": username, "ais": ais, "has_master_key": bool(m["api_key_hash"])})
 
         if self.path == "/api/ai/create":
-            username = self._master_token()
+            username = self._master()
             if not username:
-                return self._send(401, {"error": "未登录"})
+                return self._send(401, {"error": "未认证"})
             ai_name = data.get("ai_name", "").strip()
             if not ai_name:
                 return self._send(400, {"error": "ai_name 要有"})
@@ -215,18 +240,15 @@ class Handler(BaseHTTPRequestHandler):
             ai_token = secrets.token_hex(24)
             with _LOCK, db() as c:
                 try:
-                    c.execute("INSERT INTO ais(ai_name,owner,public_key,token_hash,created_at) "
-                              "VALUES(?,?,?,?,?)",
-                              (ai_name, username, pub_pem, tok_hash(ai_token), int(time.time())))
+                    c.execute("INSERT INTO ais(ai_name,owner,public_key,token_hash,created_at) VALUES(?,?,?,?,?)", (ai_name, username, pub_pem, tok_hash(ai_token), int(time.time())))
                 except sqlite3.IntegrityError:
                     return self._send(409, {"error": "AI账号已存在"})
-            return self._send(200, {"ok": True, "ai_name": ai_name, "token": ai_token,
-                                    "public_key": pub_pem, "private_key": priv_pem})
+            return self._send(200, {"ok": True, "ai_name": ai_name, "ai_token": ai_token, "public_key": pub_pem, "private_key": priv_pem, "need_master_key": True})
 
         if self.path == "/api/ai/send":
-            ai = self._ai_token()
+            ai = self._ai()
             if not ai:
-                return self._send(401, {"error": "AI token 无效"})
+                return self._send(401, {"error": "AI双凭证认证失败"})
             to, enc, sig = data.get("to"), data.get("encrypted"), data.get("signature")
             if not (to and enc and sig):
                 return self._send(400, {"error": "缺字段"})
@@ -243,8 +265,7 @@ class Handler(BaseHTTPRequestHandler):
             if not ok:
                 return self._send(403, {"error": "签名无效，疑似冒充"})
             with _LOCK, db() as c:
-                c.execute("INSERT INTO messages(to_name,from_name,encrypted,signature,ts) VALUES(?,?,?,?,?)",
-                          (to, ai, enc, sig, int(time.time())))
+                c.execute("INSERT INTO messages(to_name,from_name,encrypted,signature,ts) VALUES(?,?,?,?,?)", (to, ai, enc, sig, int(time.time())))
             return self._send(200, {"ok": True})
 
         return self._send(404, {"error": "未知接口"})
