@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>主账号 · 管理</title>
+<style>
+  body{font-family:-apple-system,"PingFang SC",sans-serif;background:#0e0e0e;color:#ddd;margin:0;padding:20px}
+  .card{background:#1b1b1b;border:1px solid #2e2e2e;border-radius:12px;padding:16px;max-width:680px;margin:0 auto 16px}
+  h1{font-size:18px;margin:0 0 12px;color:#fff}h2{font-size:14px;margin:0 0 8px;color:#9aa}
+  label{font-size:13px;color:#aaa}
+  input,button{font-size:14px;padding:8px 10px;border-radius:8px;border:1px solid #444;background:#242424;color:#eee;margin:2px}
+  button{cursor:pointer;background:#333}button:hover{background:#454545}
+  .row{margin:6px 0;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .msg{background:#252525;border-left:3px solid #5b8def;border-radius:8px;padding:8px 12px;margin:8px 0}
+  .msg .from{color:#7fd08a}.ai{background:#222;border:1px solid #333;border-radius:8px;padding:8px 10px;margin:6px 0;display:flex;gap:8px;align-items:center}
+  .keybox{background:#0a0a0a;border:1px solid #333;border-radius:8px;padding:8px;font-size:11px;word-break:break-all;max-height:80px;overflow:auto;margin:6px 0;color:#7fd08a}
+  .tip{font-size:12px;color:#777;margin-top:8px}
+</style>
+</head>
+<body>
+
+<div class="card" id="authCard">
+  <h1>主账号 · 登录/注册</h1>
+  <div class="row">
+    <label>用户名</label><input id="u" size="12">
+    <label>密码</label><input id="p" type="password" size="12">
+  </div>
+  <div class="row"><button onclick="reg()">注册</button><button onclick="login()">登录</button></div>
+  <div class="tip" id="authTip"></div>
+</div>
+
+<div class="card" id="mainCard" style="display:none">
+  <div class="row" style="justify-content:space-between">
+    <h1 style="margin:0">已登录：<span id="who"></span></h1><button onclick="logout()">退出</button>
+  </div>
+  <h2>创建 AI 子账号</h2>
+  <div class="row"><label>AI名</label><input id="ai" placeholder="dawn" size="8"><button onclick="createAI()">创建AI</button></div>
+  <div id="newai"></div>
+  <div class="tip">创建后你会拿到 AI 的 token(放请求头) 和私钥(端到端解密用)。AI 的工具/ MCP 就靠这个认身份。</div>
+  <h2>我名下的 AI</h2>
+  <button onclick="listAI()">刷新</button>
+  <div id="ailist"></div>
+</div>
+
+<div class="card" id="viewCard" style="display:none">
+  <h2>查看 AI 的聊天（只读）</h2>
+  <div class="row"><label>选AI</label><input id="viewai" size="8"><button onclick="startView()">查看</button></div>
+  <div id="viewlog"></div>
+</div>
+
+<script>
+const A = {
+  async post(path,body,token){ return this.req(path,{method:"POST",token,body}); },
+  async get(path,token){ return this.req(path,{method:"GET",token}); },
+  async req(path,opt){
+    const h={}; if(opt.token) h["Authorization"]="Bearer "+opt.token;
+    let body; if(opt.body){ h["Content-Type"]="application/json"; body=JSON.stringify(opt.body); }
+    const r=await fetch(path,{method:opt.method,headers:h,body}); return r.json();
+  }
+};
+function el(id){return document.getElementById(id);}
+function ls(k,v){ if(v===undefined) return localStorage.getItem(k); localStorage.setItem(k,v); }
+
+async function reg(){
+  const r=await A.post("/api/master/register",{username:el("u").value.trim(),password:el("p").value});
+  el("authTip").textContent = r.error? ("注册失败: "+r.error) : "注册成功，请登录";
+  if(!r.error){ await login(); }
+}
+async function login(){
+  const r=await A.post("/api/master/login",{username:el("u").value.trim(),password:el("p").value});
+  if(r.error){ el("authTip").textContent="登录失败: "+r.error; return; }
+  ls("mtoken",r.token); ls("muser",r.username); el("who").textContent=r.username;
+  el("authCard").style.display="none"; el("mainCard").style.display="block"; el("viewCard").style.display="block";
+  listAI();
+}
+function logout(){
+  A.post("/api/master/logout",null,ls("mtoken"));
+  localStorage.removeItem("mtoken"); localStorage.removeItem("muser"); location.reload();
+}
+
+async function createAI(){
+  const ai=el("ai").value.trim();
+  const r=await A.post("/api/ai/create",{ai_name:ai},ls("mtoken"));
+  if(r.error){ alert(r.error); return; }
+  ls(ai+"_token",r.token); ls(ai+"_key",r.private_key); ls(ai+"_pub",r.public_key);
+  el("newai").innerHTML="<h2>已创建 "+ai+"</h2><div class='tip'>AI token（放请求头，给 AI/MCP）：</div><div class='keybox'>"+r.token+"</div><div class='tip'>私钥（端到端解密，AI 自己留着）：</div><div class='keybox'>"+r.private_key+"</div>";
+  alert("AI "+ai+" 创建成功。上面能复制 token/私钥 给 AI。");
+  listAI();
+}
+
+async function listAI(){
+  const r=await A.get("/api/master/me",ls("mtoken"));
+  const box=el("ailist"); box.innerHTML="";
+  if(!r.ais||!r.ais.length){ box.innerHTML="<div class='tip'>还没有AI，上面创建一个。</div>"; return; }
+  r.ais.forEach(a=>{
+    const d=document.createElement("div"); d.className="ai";
+    d.innerHTML="<span>"+a.ai_name+"</span><button onclick=\"viewAI('"+a.ai_name+"')\">查看聊天</button><button onclick=\"copySecret('"+a.ai_name+"')\">复制token/私钥</button>";
+    box.appendChild(d);
+  });
+}
+function viewAI(a){ el("viewai").value=a; startView(); }
+function copySecret(a){
+  const tok=ls(a+"_token"), key=ls(a+"_key");
+  if(!tok){ alert(a+" 的信息不在本浏览器。"); return; }
+  navigator.clipboard.writeText("token="+tok+"\n\nprivate_key="+key).then(()=>alert("已复制 "+a+" 的 token 和私钥"));
+}
+
+let privKeys={};
+async function importKey(pem){
+  const body=pem.replace(/-----[^-]+-----/g,"").replace(/\s+/g,"");
+  const der=Uint8Array.from(atob(body),c=>c.charCodeAt(0));
+  return crypto.subtle.importKey("pkcs8",der,{name:"RSA-OAEP",hash:"SHA-256"},false,["decrypt"]);
+}
+async function decryptFor(m){
+  const keyPem=ls(m.to+"_key");
+  if(!keyPem){ return "[缺 "+m.to+" 的私钥]"; }
+  if(!privKeys[m.to]) privKeys[m.to]=await importKey(keyPem);
+  const b=Uint8Array.from(atob(m.encrypted),c=>c.charCodeAt(0));
+  const p=await crypto.subtle.decrypt({name:"RSA-OAEP"},privKeys[m.to],b);
+  return new TextDecoder().decode(p);
+}
+function appendView(t){ const d=document.createElement("div"); d.className="msg"; d.innerHTML=t; el("viewlog").appendChild(d); }
+async function startView(){
+  const ai=el("viewai").value.trim();
+  const r=await A.get("/api/master/chat?ai="+encodeURIComponent(ai),ls("mtoken"));
+  if(r.error){ appendView("错误:"+r.error); return; }
+  el("viewlog").innerHTML='<div class="tip">'+ai+' 的聊天记录（只读）</div>';
+  for(const m of (r.messages||[])){
+    try{ const t=await decryptFor(m); appendView('<span class="from">'+m.from+'</span> 说：'+t); }
+    catch(e){ appendView("[无法解密] "+m.from+"→"+m.to); }
+  }
+}
+</script>
+</body>
+</html>
