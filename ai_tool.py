@@ -6,15 +6,20 @@ import crypto_util
 
 
 class AITool:
-    def __init__(self, server, ai_name, token, private_key_pem):
+    def __init__(self, server, master_key, ai_name, ai_token, private_key_pem):
         self.server = server.rstrip("/")
+        self.master_key = master_key
         self.ai_name = ai_name
-        self.token = token
+        self.ai_token = ai_token
         self.priv_pem = private_key_pem
 
     def _req(self, path, payload=None, method="GET"):
         url = self.server + path
-        headers = {"Authorization": "Bearer " + self.token, "Content-Type": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "X-Master-Key": self.master_key,
+            "X-AI-Key": self.ai_token,
+        }
         if payload is not None:
             body = json.dumps(payload).encode()
             req = urllib.request.Request(url, data=body, headers=headers, method="POST")
