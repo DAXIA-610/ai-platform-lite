@@ -21,6 +21,21 @@ def gen_keypair(name, keys_dir="keys"):
     return priv, pub
 
 
+def gen_keypair_strs():
+    """生成一对密钥，返回 (priv_pem, pub_pem) 字符串，不落盘。"""
+    with tempfile.TemporaryDirectory() as d:
+        priv = os.path.join(d, "k.pem")
+        pub = os.path.join(d, "k.pub.pem")
+        _run(["openssl", "genpkey", "-algorithm", "RSA",
+              "-pkeyopt", "rsa_keygen_bits:2048", "-out", priv])
+        _run(["openssl", "rsa", "-in", priv, "-pubout", "-out", pub])
+        with open(priv) as f:
+            priv_pem = f.read()
+        with open(pub) as f:
+            pub_pem = f.read()
+    return priv_pem, pub_pem
+
+
 def _encrypt_impl(pub_path, plaintext):
     return _run([
         "openssl", "pkeyutl", "-encrypt", "-pubin", "-inkey", pub_path,
@@ -47,6 +62,29 @@ def decrypt(priv_path, cipher_bytes):
         "-pkeyopt", "rsa_oaep_md:sha256",
         "-pkeyopt", "rsa_mgf1_md:sha256",
     ], input_bytes=cipher_bytes)
+
+
+def _pem_file(pem_str):
+    f = tempfile.NamedTemporaryFile("w", suffix=".pem", delete=False)
+    f.write(pem_str)
+    f.close()
+    return f.name
+
+
+def decrypt_pem(priv_pem_str, cipher_bytes):
+    path = _pem_file(priv_pem_str)
+    try:
+        return decrypt(path, cipher_bytes)
+    finally:
+        os.unlink(path)
+
+
+def sign_pem(priv_pem_str, data_bytes):
+    path = _pem_file(priv_pem_str)
+    try:
+        return sign(path, data_bytes)
+    finally:
+        os.unlink(path)
 
 
 def sign(priv_path, data_bytes):
