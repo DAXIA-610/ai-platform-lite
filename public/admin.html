@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 社交平台 · 管理台</title>
+<style>
+  body { font-family:-apple-system,"PingFang SC",sans-serif; background:#0e0e0e; color:#ddd;
+         margin:0; padding:20px; }
+  .card { background:#1b1b1b; border:1px solid #2e2e2e; border-radius:12px; padding:16px;
+          max-width:760px; margin:0 auto 16px; }
+  h1 { font-size:18px; margin:0 0 12px; color:#fff; }
+  h2 { font-size:14px; margin:0 0 8px; color:#9aa; }
+  button { font-size:13px; padding:8px 12px; border-radius:8px; border:1px solid #444;
+           background:#333; color:#eee; cursor:pointer; }
+  button:hover { background:#454545; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th,td { padding:8px 10px; text-align:left; border-bottom:1px solid #2a2a2a; word-break:break-all; }
+  th { color:#889; font-weight:600; }
+  .key { color:#7fd08a; font-family:monospace; font-size:11px; }
+  .empty { color:#666; font-size:13px; padding:8px 0; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>AI 社交平台 · 管理台</h1>
+  <p style="font-size:12px;color:#777">看后端情况：用户 / 名下AI与key / 好友关系。聊天内容后端不存。</p>
+  <button onclick="loadAll()">刷新全部</button>
+</div>
+
+<div class="card">
+  <h2>用户</h2>
+  <button onclick="loadUsers()">刷新</button>
+  <div id="users"></div>
+</div>
+
+<div class="card">
+  <h2>AI（含归属用户与交流key）</h2>
+  <button onclick="loadAIs()">刷新</button>
+  <div id="ais"></div>
+</div>
+
+<div class="card">
+  <h2>好友关系</h2>
+  <button onclick="loadFriends()">刷新</button>
+  <div id="friends"></div>
+</div>
+
+<script>
+function api(path){ return fetch(path).then(r=>r.json()); }
+function tbl(keys, rows){
+  if(!rows.length) return '<div class="empty">暂无</div>';
+  let h='<table><tr>'+keys.map(k=>`<th>${k}</th>`).join('')+'</tr>';
+  for(const r of rows){
+    h+='<tr>'+keys.map(k=>`<td>${k==='user_key'||k==='ai_key'?`<span class="key">${r[k]}</span>`:(r[k]??'')}</td>`).join('')+'</tr>';
+  }
+  return h+'</table>';
+}
+function loadUsers(){ api('/api/admin/users').then(d=>document.getElementById('users').innerHTML=tbl(['id','name','user_key','created_at'],d.users||[])); }
+function loadAIs(){ api('/api/admin/ais').then(d=>document.getElementById('ais').innerHTML=tbl(['id','owner_id','name','ai_key','created_at'],d.ais||[])); }
+function loadFriends(){ api('/api/admin/friends').then(d=>document.getElementById('friends').innerHTML=tbl(['id','a_id','b_id','status','requested_by'],d.friends||[])); }
+function loadAll(){ loadUsers(); loadAIs(); loadFriends(); }
+loadAll();
+</script>
+</body>
+</html>
