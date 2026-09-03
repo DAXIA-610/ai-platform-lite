@@ -24,6 +24,7 @@ class _LoginPageState extends State<LoginPage> {
       final uk = p.getString('user_key');
       if (b != null) setState(() => _base.text = b);
       if (uk != null) {
+        // 已有登录态直接进主页
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const HomePage()),
         );
@@ -42,7 +43,7 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _register() async {
     final base = _base.text.trim();
-    if (base.isEmpty) { setState(() => _err = "先填后端地址"); return; }
+    if (base.isEmpty) return setState(() => _err = "先填后端地址");
     Api.base = base;
     final r = await Api.register(_name.text.trim(), _pwd.text);
     if (r['user_id'] != null) {
@@ -55,7 +56,7 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _login() async {
     final base = _base.text.trim();
-    if (base.isEmpty) { setState(() => _err = "先填后端地址"); return; }
+    if (base.isEmpty) return setState(() => _err = "先填后端地址");
     Api.base = base;
     final r = await Api.login(_uid.text.trim(), _pwd.text);
     if (r['user_key'] != null) {
@@ -111,7 +112,10 @@ class _LoginPageState extends State<LoginPage> {
               TextField(controller: _uid, decoration: _in('你的用户ID(登录用)')),
               const SizedBox(height: 12),
               OutlinedButton(onPressed: _login, child: const Text('登录已有账号')),
-              if (_err.isNotEmpty) Text(_err, style: const TextStyle(color: Colors.redAccent)),
+              if (_err.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Text(_err, style: const TextStyle(color: Colors.redAccent)),
+              ],
               const SizedBox(height: 32),
               const Text('提示：注册后后端会分配用户ID，用它+密码登录。',
                   style: TextStyle(color: Colors.white38, fontSize: 12)),

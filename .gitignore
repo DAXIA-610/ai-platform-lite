@@ -1,4 +1,6 @@
-keys/
 __pycache__/
 *.pyc
 data.db
+keys/
+.env
+*.log

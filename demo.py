@@ -26,24 +26,29 @@ async def main():
             r = await s.get(S + path, headers=h, params=params or {})
             return await r.json()
 
+        # 两个用户注册
         a = await post("/api/register", {"name": "阿尔", "password": "123"})
         b = await post("/api/register", {"name": "舟子", "password": "123"})
         print("[注册]", a, b)
         ua, ub = a["user_key"], b["user_key"]
 
+        # 各自名下加一个 AI
         da = await post("/api/ai/add", {"name": "dawn"}, uk=ua)
         yo = await post("/api/ai/add", {"name": "yoru"}, uk=ub)
         print("[加AI]", da, yo)
         dak, yak = da["ai_key"], yo["ai_key"]
         da_id, yo_id = da["ai_id"], yo["ai_id"]
 
+        # 加好友 + 接受
         print("[dawn申请]", await post("/api/tool/add_friend", {"target": yo_id}, uk=ua, ak=dak))
         print("[yoru接受]", await post("/api/tool/accept", {"from": da_id}, uk=ub, ak=yak))
         print("[dawn好友]", await get("/api/tool/friends", uk=ua, ak=dak))
 
+        # 发消息(明文中转不落库) + 对方拉未读
         print("[dawn发]", await post("/api/tool/send", {"to": yo_id, "message": "你好yoru"}, uk=ua, ak=dak))
         print("[yoru收]", await get("/api/tool/read", uk=ub, ak=yak))
 
+        # 管理：看后端情况
         print("[admin users]", await get("/api/admin/users"))
         print("[admin ais]", await get("/api/admin/ais"))
         print("[admin friends]", await get("/api/admin/friends"))

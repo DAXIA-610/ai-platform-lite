@@ -115,13 +115,14 @@ async def handle(req):
     except Exception:
         data = {}
 
-    uk = req.headers.get("X-User-Key", "")
-    ak = req.headers.get("X-AI-Key", "")
+    uk = req.headers.get("X-User-Key", "")   # 主账号key(前端是谁)
+    ak = req.headers.get("X-AI-Key", "")     # AI 交流key(是哪个AI)
 
-    # ---------------- 账号 --------------
+    # ---------------- 账号 ----------------
     if path == "/api/health" and method == "GET":
         return to_json(ok=True)
 
+    # 注册用户：名字+密码 -> 分配 user_id + user_key
     if path == "/api/register" and method == "POST":
         name = (data.get("name") or "").strip()
         pw = data.get("password") or ""
@@ -139,6 +140,7 @@ async def handle(req):
                 return to_json(error="名字已被占用"), 409
         return to_json(ok=True, user_id=uid, user_key=key, name=name)
 
+    # 登录：user_id + 密码
     if path == "/api/login" and method == "POST":
         uid = data.get("user_id")
         pw = data.get("password") or ""
@@ -148,7 +150,7 @@ async def handle(req):
             return to_json(error="用户ID或密码错误"), 401
         return to_json(ok=True, user_id=row["id"], name=row["name"], user_key=row["user_key"])
 
-    # ---------------- 用户自己的信息 / 名下AI ----------------
+    # ---------------- 用户自己的信息 / 名下AI（用 X-User-Key 认前端） ----------------
     if path == "/api/me" and method == "GET":
         with db() as c:
             u = user_by_key(c, uk)
@@ -156,6 +158,7 @@ async def handle(req):
             return to_json(error="未认证"), 401
         return to_json(user_id=u["id"], name=u["name"])
 
+    # 添加 AI：用户主页「添加AI」，生成AI账号+ai_key
     if path == "/api/ai/add" and method == "POST":
         with db() as c:
             u = user_by_key(c, uk)
@@ -170,6 +173,7 @@ async def handle(req):
             aid = cur.lastrowid
         return to_json(ok=True, ai_id=aid, name=name, ai_key=akey)
 
+    # 名下AI列表
     if path == "/api/ai/list" and method == "GET":
         with db() as c:
             u = user_by_key(c, uk)
@@ -178,7 +182,8 @@ async def handle(req):
             rows = c.execute("SELECT id,name,avatar FROM ais WHERE owner_id=?", (u["id"],)).fetchall()
         return to_json(ais=[dict(r) for r in rows])
 
-    # ---------------- 工具(AI 调用, X-User-Key + X-AI-Key) --------------
+    # ---------------- 工具（AI 调用，X-User-Key + X-AI-Key） ----------------
+    # 借 AI 的 key 认出 AI 及其归属用户
     def auth_ai():
         with db() as c:
             ai = ai_by_key(c, ak)
@@ -210,7 +215,7 @@ async def handle(req):
         ai, owner = auth_ai()
         if not ai:
             return to_json(error="AI 认证失败"), 401
-        target = data.get("target")
+        target = data.get("target")  # AI id
         if not target or target == ai["id"]:
             return to_json(error="目标无效"), 400
         with db() as c:
@@ -244,6 +249,7 @@ async def handle(req):
             await push(from_ai["owner_id"], {"type": "friend_accepted", "from": ai["id"]})
         return to_json(ok=True)
 
+    # 发消息：明文进 -> 后端只中转(不落库) -> WS 推给对方owner前端
     if path == "/api/tool/send" and method == "POST":
         ai, owner = auth_ai()
         if not ai:
@@ -261,10 +267,11 @@ async def handle(req):
             if not fr or fr["status"] != "accepted":
                 return to_json(error="还不是好友"), 403
         msg = {"from": ai["id"], "to": to, "message": message, "ts": int(time.time())}
-        await buffer_msg(msg)
-        await push(t_ai["owner_id"], {"type": "message", "msg": msg})
+        await buffer_msg(msg)                                  # 内存暂存(不落库)
+        await push(t_ai["owner_id"], {"type": "message", "msg": msg})  # 实时推给主人前端
         return to_json(ok=True)
 
+    # 拉未读（收了就清，不落库）
     if path == "/api/tool/read" and method == "GET":
         ai, owner = auth_ai()
         if not ai:
@@ -274,16 +281,20 @@ async def handle(req):
             PENDING[ai["id"]] = []
         return to_json(messages=msgs)
 
+    # 查历史：向前端要。前端在线回传，不在线返回提示
     if path == "/api/tool/history" and method == "GET":
         ai, owner = auth_ai()
         if not ai:
             return to_json(error="AI 认证失败"), 401
         count = int(data.get("count", 20))
+        # 后端向该 AI 归属的前端(owner)发出请求；前端在 WS 上响应。
+        # 这里先做成：把请求放到 WS 队列，等待前端回传；超时返回"前端未运行"。
         got = await request_history(owner["id"], ai["id"], count)
         if got is None:
             return to_json(error="前端未运行，请主人打开APP", need_frontend=True)
         return to_json(messages=got)
 
+    # 前端回传历史(前端收到 history_request 后调此接口上报)
     if path == "/api/tool/history_upload" and method == "POST":
         req_id = data.get("req_id")
         msgs = data.get("messages", [])
@@ -293,7 +304,7 @@ async def handle(req):
                 HISTORY_WAIT[req_id]["evt"].set()
         return to_json(ok=True)
 
-    # ---------------- 管理 ----------------
+    # ---------------- 管理（运营者看后端情况） ----------------
     if path == "/api/admin/users" and method == "GET":
         with db() as c:
             rows = c.execute("SELECT id,name,user_key,created_at FROM users ORDER BY id").fetchall()
@@ -312,7 +323,8 @@ async def handle(req):
     return to_json(error="未知接口"), 404
 
 
-HISTORY_WAIT = {}
+# ---------------- 历史请求(向前端要) ----------------
+HISTORY_WAIT = {}   # req_id -> {"done":None, "evt":asyncio.Event}
 
 
 async def request_history(owner_id, ai_id, count):
@@ -329,6 +341,7 @@ async def request_history(owner_id, ai_id, count):
         HISTORY_WAIT.pop(req_id, None)
 
 
+# ---------------- WebSocket(主人前端) ----------------
 async def ws_handler(req):
     ws = web.WebSocketResponse()
     await ws.prepare(req)
@@ -358,6 +371,7 @@ def make_app():
     app = web.Application()
     app.router.add_get("/ws", ws_handler)
     app.router.add_route("*", "/api/{tail:.*}", handle)
+    # 静态页面(管理页等)：http://<host>:8000/public/admin.html
     public_dir = os.path.join(BASE_DIR, "public")
     if os.path.isdir(public_dir):
         app.router.add_static("/public/", public_dir)

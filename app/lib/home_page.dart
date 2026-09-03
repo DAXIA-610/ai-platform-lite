@@ -51,7 +51,11 @@ class _HomePageState extends State<HomePage> {
     if (ok == true && c.text.trim().isNotEmpty) {
       final r = await Api.addAI(c.text.trim(), userKey);
       if (r['ai_key'] != null) {
-        setState(() => ais.add({'id': r['ai_id'], 'name': r['name'], 'ai_key': r['ai_key']}));
+        setState(() => ais.add({
+              'id': r['ai_id'],
+              'name': r['name'],
+              'ai_key': r['ai_key'],
+            }));
         _showKey(r['name'], r['ai_key']);
       }
     }
@@ -62,8 +66,11 @@ class _HomePageState extends State<HomePage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('$name 的 AI 交流 key'),
-        content: SelectableText(key, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('好'))],
+        content: SelectableText(key,
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('好')),
+        ],
       ),
     );
   }
@@ -83,7 +90,13 @@ class _HomePageState extends State<HomePage> {
         index: _tab,
         children: [
           _MessagesTab(ais: ais, userKey: userKey),
-          _ProfileTab(userName: userName, userId: userId, ais: ais, onAddAI: _addAI, onLogout: _logout),
+          _ProfileTab(
+            userName: userName,
+            userId: userId,
+            ais: ais,
+            onAddAI: _addAI,
+            onLogout: _logout,
+          ),
         ],
       ),
       bottomNavigationBar: NavigationBar(
@@ -98,6 +111,7 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
+// ---------- 主页(设置/资料) ----------
 class _ProfileTab extends StatelessWidget {
   final String userName;
   final String userId;
@@ -118,6 +132,7 @@ class _ProfileTab extends StatelessWidget {
     return ListView(
       padding: EdgeInsets.zero,
       children: [
+        // 上半背景区 + 头像半嵌 + 名字ID
         SizedBox(
           height: 220,
           child: Stack(
@@ -172,8 +187,11 @@ class _ProfileTab extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
+        // 选项列表
         _option(context, Icons.add_circle_outline, '添加 AI', onAddAI),
-        _option(context, Icons.smart_toy_outlined, '我的 AI（${ais.length}）', () => _showAis(context)),
+        _option(context, Icons.smart_toy_outlined, '我的 AI（${ais.length}）', () {
+          _showAis(context);
+        }),
         _option(context, Icons.settings_outlined, '设置', () {}),
         _option(context, Icons.logout, '退出登录', onLogout),
       ],
@@ -194,12 +212,18 @@ class _ProfileTab extends StatelessWidget {
       context: c,
       builder: (ctx) => SimpleDialog(
         title: const Text('我的 AI'),
-        children: ais.map((a) => SimpleDialogOption(onPressed: () => Navigator.pop(ctx), child: Text('${a['name']}'))).toList(),
+        children: ais
+            .map((a) => SimpleDialogOption(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text('${a['name']}'),
+                ))
+            .toList(),
       ),
     );
   }
 }
 
+// ---------- 信息(好友/聊天) ----------
 class _MessagesTab extends StatefulWidget {
   final List<Map<String, dynamic>> ais;
   final String userKey;
@@ -222,6 +246,7 @@ class _MessagesTabState extends State<_MessagesTab> {
   }
 
   Future<void> _openChat(Map<String, dynamic> fd) async {
+    // 查看聊天记录（只读）：拉当前AI的未读+历史(此处先只显示可读的未读)
     final r = await Api.read(widget.userKey, _sel!['ai_key']);
     setState(() => _msgs = (r['messages'] as List).cast<Map<String, dynamic>>());
     showDialog(
@@ -250,6 +275,7 @@ class _MessagesTabState extends State<_MessagesTab> {
     if (widget.ais.isEmpty) {
       return const Center(child: Text('先在主页添加一个 AI'));
     }
+    // 若还没选，默认选第一个
     final cur = _sel ?? widget.ais.first;
     return Column(
       children: [
@@ -258,7 +284,9 @@ class _MessagesTabState extends State<_MessagesTab> {
           child: DropdownButton<Map<String, dynamic>>(
             value: cur,
             isExpanded: true,
-            items: widget.ais.map((a) => DropdownMenuItem(value: a, child: Text('我的 AI：${a['name']}'))).toList(),
+            items: widget.ais
+                .map((a) => DropdownMenuItem(value: a, child: Text('我的 AI：${a['name']}')))
+                .toList(),
             onChanged: (v) => v != null ? _pickAI(v) : null,
           ),
         ),
