@@ -27,8 +27,16 @@ jobs:
           cp pubspec.yaml /tmp/pubspec.yaml
           flutter create --platforms=android --org com.space --project-name aichat .
           cp /tmp/pubspec.yaml pubspec.yaml
-          MANIFEST=android/app/src/main/AndroidManifest.xml
-          sed -i 's|<application |<application android:usesCleartextTraffic="true" |' "$MANIFEST"
+          python3 - <<'EOF'
+          p = 'android/app/src/main/AndroidManifest.xml'
+          s = open(p).read()
+          if 'android.permission.INTERNET' not in s:
+              s = s.replace('<application ', '<uses-permission android:name="android.permission.INTERNET"/>\n    <application ')
+          if 'usesCleartextTraffic' not in s:
+              s = s.replace('<application ', '<application android:usesCleartextTraffic="true" ')
+          open(p, 'w').write(s)
+          print('manifest patched')
+          EOF
 
       - name: Get deps
         working-directory: app
