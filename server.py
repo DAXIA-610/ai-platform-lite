@@ -38,6 +38,18 @@ def db():
 
 def init_db():
     with db() as c:
+        # 自动识别旧库(老表结构)并重建，避免 no such column 之类报错
+        tables = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        need = False
+        if "accounts" in tables:
+            need = True
+        if not need and "ais" in tables:
+            cols = {r[1] for r in c.execute("PRAGMA table_info(ais)")}
+            if "id" not in cols:
+                need = True
+        if need:
+            for t in ("friends", "ais", "users", "accounts"):
+                c.execute(f"DROP TABLE IF EXISTS {t}")
         c.executescript("""
         CREATE TABLE IF NOT EXISTS users(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
