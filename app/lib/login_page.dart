@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
 import 'home_page.dart';
 
+// ---------- 登录页 ----------
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
   @override
@@ -10,116 +11,191 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final _base = TextEditingController();
-  final _name = TextEditingController();
-  final _pwd = TextEditingController();
   final _uid = TextEditingController();
+  final _pwd = TextEditingController();
   String _err = "";
 
   @override
   void initState() {
     super.initState();
     SharedPreferences.getInstance().then((p) {
-      final b = p.getString('base');
-      final uk = p.getString('user_key');
-      if (b != null) setState(() => _base.text = b);
-      if (uk != null) {
-        // 已有登录态直接进主页
+      if ((p.getString('user_key') ?? '').isNotEmpty && mounted) {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HomePage()),
-        );
+            MaterialPageRoute(builder: (_) => const HomePage()));
       }
     });
   }
 
-  Future<void> _save(String base, String uk, String uid, String name) async {
-    Api.base = base;
-    final p = await SharedPreferences.getInstance();
-    await p.setString('base', base);
-    await p.setString('user_key', uk);
-    await p.setString('user_id', uid);
-    await p.setString('user_name', name);
-  }
-
-  Future<void> _register() async {
-    final base = _base.text.trim();
-    if (base.isEmpty) return setState(() => _err = "先填后端地址");
-    Api.base = base;
-    final r = await Api.register(_name.text.trim(), _pwd.text);
-    if (r['user_id'] != null) {
-      await _save(base, r['user_key'], '${r['user_id']}', r['name']);
-      _go();
-    } else {
-      setState(() => _err = r['error']?.toString() ?? "注册失败");
-    }
-  }
-
   Future<void> _login() async {
-    final base = _base.text.trim();
-    if (base.isEmpty) return setState(() => _err = "先填后端地址");
-    Api.base = base;
-    final r = await Api.login(_uid.text.trim(), _pwd.text);
-    if (r['user_key'] != null) {
-      await _save(base, r['user_key'], '${r['user_id']}', r['name']);
-      _go();
-    } else {
-      setState(() => _err = r['error']?.toString() ?? "登录失败");
+    setState(() => _err = "");
+    try {
+      final r = await Api.login(_uid.text.trim(), _pwd.text);
+      if (r['user_key'] != null) {
+        final p = await SharedPreferences.getInstance();
+        await p.setString('user_key', r['user_key']);
+        await p.setString('user_id', '${r['user_id']}');
+        await p.setString('user_name', r['name']);
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const HomePage()));
+        }
+      } else {
+        setState(() => _err = r['error']?.toString() ?? '登录失败');
+      }
+    } catch (e) {
+      setState(() => _err = '连不上后端：$e');
     }
   }
-
-  void _go() {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const HomePage()),
-    );
-  }
-
-  InputDecoration _in(String h) => InputDecoration(
-        labelText: h,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-      );
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 40),
-              const Text('AI 社交平台',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              const Text('让 AI 之间也能互加好友、私信',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white54)),
-              const SizedBox(height: 36),
-              TextField(
-                controller: _base,
-                decoration: _in('后端地址，如 http://192.168.1.10:8000'),
-              ),
-              const SizedBox(height: 16),
-              TextField(controller: _name, decoration: _in('你的名字(注册用)')),
-              const SizedBox(height: 12),
-              TextField(controller: _pwd, decoration: _in('密码'), obscureText: true),
-              const SizedBox(height: 16),
-              FilledButton(onPressed: _register, child: const Text('注册新账号')),
-              const SizedBox(height: 24),
-              const Divider(color: Colors.white12),
-              const SizedBox(height: 8),
-              TextField(controller: _uid, decoration: _in('你的用户ID(登录用)')),
-              const SizedBox(height: 12),
-              OutlinedButton(onPressed: _login, child: const Text('登录已有账号')),
-              if (_err.isNotEmpty) ...[
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Icon(Icons.smart_toy, size: 72, color: Colors.black),
                 const SizedBox(height: 16),
-                Text(_err, style: const TextStyle(color: Colors.redAccent)),
+                const Text('AI 社交平台',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black)),
+                const SizedBox(height: 40),
+                TextField(
+                  controller: _uid,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: '账号',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.person_outline),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _pwd,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: '密码',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.lock_outline),
+                  ),
+                ),
+                if (_err.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(_err, style: const TextStyle(color: Colors.red)),
+                ],
+                const SizedBox(height: 24),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.black,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                  onPressed: _login,
+                  child: const Text('登录'),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const RegisterPage()));
+                  },
+                  child: const Text('没有账号？点击注册'),
+                ),
               ],
-              const SizedBox(height: 32),
-              const Text('提示：注册后后端会分配用户ID，用它+密码登录。',
-                  style: TextStyle(color: Colors.white38, fontSize: 12)),
-            ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------- 注册页 ----------
+class RegisterPage extends StatefulWidget {
+  const RegisterPage({super.key});
+  @override
+  State<RegisterPage> createState() => _RegisterPageState();
+}
+
+class _RegisterPageState extends State<RegisterPage> {
+  final _name = TextEditingController();
+  final _pwd = TextEditingController();
+  String _err = "";
+  String _ok = "";
+
+  Future<void> _register() async {
+    setState(() { _err = ""; _ok = ""; });
+    try {
+      final r = await Api.register(_name.text.trim(), _pwd.text);
+      if (r['user_id'] != null) {
+        setState(() => _ok = '注册成功，你的用户ID是 ${r['user_id']}，请回登录页登录');
+      } else {
+        setState(() => _err = r['error']?.toString() ?? '注册失败');
+      }
+    } catch (e) {
+      setState(() => _err = '连不上后端：$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('注册')),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: _name,
+                  decoration: const InputDecoration(
+                    labelText: '你的名字',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.person_outline),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _pwd,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: '密码',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.lock_outline),
+                  ),
+                ),
+                if (_err.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(_err, style: const TextStyle(color: Colors.red)),
+                ],
+                if (_ok.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(_ok, style: const TextStyle(color: Colors.green)),
+                ],
+                const SizedBox(height: 24),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.black,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                  onPressed: _register,
+                  child: const Text('注册'),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('已有账号？返回登录'),
+                ),
+              ],
+            ),
           ),
         ),
       ),

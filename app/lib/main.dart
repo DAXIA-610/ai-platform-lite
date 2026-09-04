@@ -12,12 +12,14 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF0e0e0e),
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF5b8def),
-          brightness: Brightness.dark,
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: Colors.white,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+          elevation: 0,
         ),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.black),
       ),
       home: const LoginPage(),
     );

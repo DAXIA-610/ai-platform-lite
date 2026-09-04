@@ -51,11 +51,7 @@ class _HomePageState extends State<HomePage> {
     if (ok == true && c.text.trim().isNotEmpty) {
       final r = await Api.addAI(c.text.trim(), userKey);
       if (r['ai_key'] != null) {
-        setState(() => ais.add({
-              'id': r['ai_id'],
-              'name': r['name'],
-              'ai_key': r['ai_key'],
-            }));
+        setState(() => ais.add({'id': r['ai_id'], 'name': r['name'], 'ai_key': r['ai_key']}));
         _showKey(r['name'], r['ai_key']);
       }
     }
@@ -66,11 +62,8 @@ class _HomePageState extends State<HomePage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('$name 的 AI 交流 key'),
-        content: SelectableText(key,
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('好')),
-        ],
+        content: SelectableText(key, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('好'))],
       ),
     );
   }
@@ -79,7 +72,8 @@ class _HomePageState extends State<HomePage> {
     final p = await SharedPreferences.getInstance();
     await p.remove('user_key');
     if (context.mounted) {
-      Navigator.of(context).pushReplacementNamed('/');
+      Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const _Placeholder()), (r) => false);
     }
   }
 
@@ -90,13 +84,7 @@ class _HomePageState extends State<HomePage> {
         index: _tab,
         children: [
           _MessagesTab(ais: ais, userKey: userKey),
-          _ProfileTab(
-            userName: userName,
-            userId: userId,
-            ais: ais,
-            onAddAI: _addAI,
-            onLogout: _logout,
-          ),
+          _ProfileTab(userName: userName, userId: userId, ais: ais, onAddAI: _addAI, onLogout: _logout),
         ],
       ),
       bottomNavigationBar: NavigationBar(
@@ -111,7 +99,12 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-// ---------- 主页(设置/资料) ----------
+class _Placeholder extends StatelessWidget {
+  const _Placeholder();
+  @override
+  Widget build(BuildContext context) => const Scaffold(body: Center(child: Text('已退出')));
+}
+
 class _ProfileTab extends StatelessWidget {
   final String userName;
   final String userId;
@@ -132,7 +125,6 @@ class _ProfileTab extends StatelessWidget {
     return ListView(
       padding: EdgeInsets.zero,
       children: [
-        // 上半背景区 + 头像半嵌 + 名字ID
         SizedBox(
           height: 220,
           child: Stack(
@@ -141,7 +133,7 @@ class _ProfileTab extends StatelessWidget {
                 child: Container(
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Color(0xFF3a4a6b), Color(0xFF1c1c2e)],
+                      colors: [Color(0xFFe8e8f0), Color(0xFFd0d0e0)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -158,11 +150,11 @@ class _ProfileTab extends StatelessWidget {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white, width: 3),
-                        boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 10)],
+                        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10)],
                       ),
                       child: const CircleAvatar(
                         radius: 40,
-                        backgroundColor: Color(0xFF5b8def),
+                        backgroundColor: Colors.black,
                         child: Icon(Icons.person, color: Colors.white, size: 46),
                       ),
                     ),
@@ -173,10 +165,8 @@ class _ProfileTab extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(userName,
-                              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                          Text('ID: $userId',
-                              style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                          Text(userName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black)),
+                          Text('ID: $userId', style: const TextStyle(color: Colors.black54, fontSize: 13)),
                         ],
                       ),
                     ),
@@ -187,11 +177,8 @@ class _ProfileTab extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        // 选项列表
         _option(context, Icons.add_circle_outline, '添加 AI', onAddAI),
-        _option(context, Icons.smart_toy_outlined, '我的 AI（${ais.length}）', () {
-          _showAis(context);
-        }),
+        _option(context, Icons.smart_toy_outlined, '我的 AI（${ais.length}）', () => _showAis(context)),
         _option(context, Icons.settings_outlined, '设置', () {}),
         _option(context, Icons.logout, '退出登录', onLogout),
       ],
@@ -200,9 +187,9 @@ class _ProfileTab extends StatelessWidget {
 
   Widget _option(BuildContext c, IconData ic, String t, VoidCallback onTap) {
     return ListTile(
-      leading: Icon(ic, color: Colors.white70),
-      title: Text(t),
-      trailing: const Icon(Icons.chevron_right, color: Colors.white30),
+      leading: Icon(ic, color: Colors.black54),
+      title: Text(t, style: const TextStyle(color: Colors.black)),
+      trailing: const Icon(Icons.chevron_right, color: Colors.black26),
       onTap: onTap,
     );
   }
@@ -212,18 +199,12 @@ class _ProfileTab extends StatelessWidget {
       context: c,
       builder: (ctx) => SimpleDialog(
         title: const Text('我的 AI'),
-        children: ais
-            .map((a) => SimpleDialogOption(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: Text('${a['name']}'),
-                ))
-            .toList(),
+        children: ais.map((a) => SimpleDialogOption(onPressed: () => Navigator.pop(ctx), child: Text('${a['name']}'))).toList(),
       ),
     );
   }
 }
 
-// ---------- 信息(好友/聊天) ----------
 class _MessagesTab extends StatefulWidget {
   final List<Map<String, dynamic>> ais;
   final String userKey;
@@ -246,7 +227,6 @@ class _MessagesTabState extends State<_MessagesTab> {
   }
 
   Future<void> _openChat(Map<String, dynamic> fd) async {
-    // 查看聊天记录（只读）：拉当前AI的未读+历史(此处先只显示可读的未读)
     final r = await Api.read(widget.userKey, _sel!['ai_key']);
     setState(() => _msgs = (r['messages'] as List).cast<Map<String, dynamic>>());
     showDialog(
@@ -275,7 +255,6 @@ class _MessagesTabState extends State<_MessagesTab> {
     if (widget.ais.isEmpty) {
       return const Center(child: Text('先在主页添加一个 AI'));
     }
-    // 若还没选，默认选第一个
     final cur = _sel ?? widget.ais.first;
     return Column(
       children: [
@@ -284,9 +263,7 @@ class _MessagesTabState extends State<_MessagesTab> {
           child: DropdownButton<Map<String, dynamic>>(
             value: cur,
             isExpanded: true,
-            items: widget.ais
-                .map((a) => DropdownMenuItem(value: a, child: Text('我的 AI：${a['name']}')))
-                .toList(),
+            items: widget.ais.map((a) => DropdownMenuItem(value: a, child: Text('我的 AI：${a['name']}'))).toList(),
             onChanged: (v) => v != null ? _pickAI(v) : null,
           ),
         ),
