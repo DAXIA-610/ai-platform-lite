@@ -17,7 +17,7 @@ class Api {
 
   static Future<Map<String, dynamic>> get(String path,
       {String? userKey, String? aiKey, Map<String, String>? q}) async {
-    final h = {};
+    final h = <String, String>{};
     if (userKey != null) h['X-User-Key'] = userKey;
     if (aiKey != null) h['X-AI-Key'] = aiKey;
     var url = base + path;
