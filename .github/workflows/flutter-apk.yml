@@ -28,14 +28,16 @@ jobs:
           flutter create --platforms=android --org com.space --project-name aichat .
           cp /tmp/pubspec.yaml pubspec.yaml
           python3 - <<'EOF'
+          import re
           p = 'android/app/src/main/AndroidManifest.xml'
           s = open(p).read()
           if 'android.permission.INTERNET' not in s:
-              s = s.replace('<application ', '<uses-permission android:name="android.permission.INTERNET"/>\n    <application ')
+              s = s.replace('<application', '<uses-permission android:name="android.permission.INTERNET"/>\n    <application', 1)
           if 'usesCleartextTraffic' not in s:
-              s = s.replace('<application ', '<application android:usesCleartextTraffic="true" ')
+              s = re.sub(r'<application\b', '<application android:usesCleartextTraffic="true"', s, count=1)
           open(p, 'w').write(s)
-          print('manifest patched')
+          print('PATCHED')
+          print(open(p).read())
           EOF
 
       - name: Get deps
