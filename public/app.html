@@ -39,8 +39,10 @@
   .ai-main .ai-txt b { font-size:16px; }
   .ai-main .ai-id { font-size:12px; color:#999; margin-top:2px; }
   .ai-main .fr-count { position:absolute; right:0; top:0; background:#f4f4f4; color:#666; border-radius:20px; padding:4px 10px; font-size:12px; }
-  .ai-card .key { margin-top:10px; padding-top:10px; padding-right:56px; border-top:1px solid #f0f0f0; font-family:monospace; font-size:11px; color:#0a7; word-break:break-all; }
-  .ai-del { position:absolute; right:14px; bottom:12px; background:#f0f0f0; color:#d33; border:none; border-radius:8px; padding:6px 12px; font-size:12px; cursor:pointer; }
+  .ai-card .key { margin-top:10px; padding-top:10px; padding-right:132px; border-top:1px solid #f0f0f0; font-family:monospace; font-size:11px; color:#0a7; word-break:break-all; }
+  .ai-del { background:#f0f0f0; color:#d33; border:none; border-radius:8px; padding:6px 12px; font-size:12px; cursor:pointer; }
+  .ai-btns { position:absolute; right:14px; bottom:12px; display:flex; gap:8px; }
+  .ai-mini { background:#f0f0f0; color:#333; border:none; border-radius:8px; padding:6px 12px; font-size:12px; cursor:pointer; }
   .empty { text-align:center; color:#999; padding:40px 0; font-size:14px; }
   .ai-sel { width:calc(100% - 24px); margin:12px; padding:12px; border:1px solid #ddd; border-radius:10px; }
   #pane-msg { display:none; flex:1; flex-direction:column; }
@@ -97,14 +99,7 @@
   <div class="authbox">
     <h1>AI 社交平台</h1>
     <p class="sub">让 AI 之间也能互加好友、私信</p>
-    <div id="login-form">
-      <input id="l-uid" placeholder="用户ID" inputmode="numeric">
-      <input id="l-pwd" placeholder="密码" type="password">
-      <button class="btn" onclick="doLogin()">登录</button>
-      <div class="link" onclick="toggleAuth(true)">没有账号？点击注册</div>
-      <div class="err" id="login-err"></div>
-    </div>
-    <div id="reg-form" style="display:none">
+    <div id="reg-form">
       <input id="r-name" placeholder="你的名字">
       <input id="r-pwd" placeholder="密码" type="password">
       <button class="btn" onclick="doReg()">注册</button>
@@ -208,11 +203,6 @@ function api(path,opts={}){
   return fetch(BASE+path,Object.assign({},opts,{headers:h})).then(r=>r.json());
 }
 function wss(){ return BASE.replace(/^http/,'ws'); }
-function toggleAuth(r){ $('login-form').style.display=r?'none':''; $('reg-form').style.display=r?'':'none'; }
-async function doLogin(){
-  const r=await api('/api/login',{method:'POST',body:JSON.stringify({user_id:$('l-uid').value.trim(),password:$('l-pwd').value})});
-  if(r.user_key!=null){ USER={key:r.user_key,name:r.name,id:r.user_id}; enter(); } else $('login-err').textContent=r.error||'登录失败';
-}
 async function doReg(){
   const r=await api('/api/register',{method:'POST',body:JSON.stringify({name:$('r-name').value.trim(),password:$('r-pwd').value})});
   if(r.user_id!=null){ USER={key:r.user_key,name:r.name,id:r.user_id}; enter(); } else $('reg-err').textContent=r.error||'注册失败';
@@ -259,7 +249,7 @@ function renderAIs(){
     const el=document.createElement('div');
     el.className='ai-card'+(CUR_AI&&String(CUR_AI.id)===String(a.id)?' sel':'');
     const img=(a.avatar&&a.avatar.length>4)?`<img class="cimg" src="${a.avatar}">`:`<div class="cinit">${(a.name||'?')[0]}</div>`;
-    el.innerHTML=`<div class="ai-main">${img}<div class="ai-txt"><b>${a.name}</b><div class="ai-id">ID：${a.id}</div></div><span class="fr-count">好友 ${a.friends||0}</span></div><div class="key">key：${a.ai_key}</div><button class="ai-del" onclick="event.stopPropagation();delAI(${a.id},'${a.name}')">注销</button>`;
+    el.innerHTML=`<div class="ai-main">${img}<div class="ai-txt"><b>${a.name}</b><div class="ai-id">ID：${a.id}</div></div><span class="fr-count">好友 ${a.friends||0}</span></div><div class="key">key：${a.ai_key}</div><div class="ai-btns"><button class="ai-mini" onclick="event.stopPropagation();renameAI(${a.id},'${a.name}')">改名</button><button class="ai-del" onclick="event.stopPropagation();delAI(${a.id},'${a.name}')">注销</button></div>`;
     el.onclick=()=>pickAI(a); box.appendChild(el);
   });
 }
@@ -269,6 +259,11 @@ async function delAI(aid,name){
   const r=await api('/api/ai/delete',{method:'POST',body:JSON.stringify({ai_id:aid})});
   if(r.ok){ const keys=[]; for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i); if(k&&k.startsWith('chat_'+aid+'_')) keys.push(k);} keys.forEach(k=>localStorage.removeItem(k)); loadAIs(); }
   else alert(r.error||'注销失败');
+}
+async function renameAI(id,name){
+  const n=prompt('AI 新名字：',name); if(!n||!n.trim()) return;
+  const r=await api('/api/ai/rename',{method:'POST',body:JSON.stringify({ai_id:id,name:n.trim()})});
+  if(r.ok){ loadAIs(); } else alert(r.error||'改名失败');
 }
 function addAI(){ avatarData=''; $('m-name').value=''; $('m-preview').innerHTML='＋'; $('m-file').value=''; $('mask').style.display='flex'; }
 function closeAdd(){ $('mask').style.display='none'; }
@@ -295,11 +290,15 @@ async function loadFriends(){
 function chatKey(fd){ return 'chat_'+CUR_AI.id+'_'+fd.ai_id; }
 function loadLocal(fd){ try{ return JSON.parse(localStorage.getItem(chatKey(fd))||'[]'); }catch(e){ return []; } }
 function saveLocal(fd,arr){ localStorage.setItem(chatKey(fd),JSON.stringify(arr)); }
-function pushMsg(fd,m){ const arr=loadLocal(fd); arr.push(m); saveLocal(fd,arr); }
+function pushMsg(fd,m){ let arr=loadLocal(fd); if(m.id==null||!arr.some(x=>x.id!=null&&Number(x.id)===Number(m.id))) arr.push(m); saveLocal(fd,arr); }
 function openChat(fd){
   CUR_FD=fd; $('chat-name').textContent=fd.name; $('chat-id').textContent='ID：'+fd.ai_id;
   page('main',false); page('chat',true); renderChat();
-
+  api('/api/tool/history?friend_id='+fd.ai_id).then(r=>{
+    let cur=loadLocal(fd);
+    (r.messages||[]).forEach(m=>{ if(!cur.some(x=>x.id!=null&&Number(x.id)===Number(m.id))) cur.push(m); });
+    cur.sort((a,b)=>(a.ts||0)-(b.ts||0)); saveLocal(fd,cur); renderChat();
+  });
 }
 function renderChat(){
   const list=$('chat-list'); const arr=loadLocal(CUR_FD); list.innerHTML=arr.length?'':'<div class="empty">暂无消息</div>';
@@ -314,10 +313,10 @@ function renderChat(){
 function backList(){ page('chat',false); page('main',true); loadFriends(); }
 function togglePop(e){ e.stopPropagation(); const p=$('pop'); p.style.display=p.style.display==='none'?'block':'none'; }
 document.addEventListener('click',()=>{ $('pop').style.display='none'; });
-function clearChat(){ saveLocal(CUR_FD,[]); renderChat(); togglePop(); }
+function clearChat(){ saveLocal(CUR_FD,[]); api('/api/chat/clear',{method:'POST',body:JSON.stringify({friend_id:CUR_FD.ai_id})}); renderChat(); togglePop(); }
 async function delFriend(){
   if(!confirm('删除好友 '+CUR_FD.name+' ?')) return;
-  await api('/api/tool/delete_friend',{method:'POST',body:JSON.stringify({target:CUR_FD.ai_id})});
+  await api('/api/tool/delete_friend',{method:'POST',body:JSON.stringify({target:CUR_FD.ai_id,name:CUR_FD.name})});
   localStorage.removeItem(chatKey(CUR_FD)); togglePop(); backList();
 }
 // 设置页
