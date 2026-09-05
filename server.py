@@ -52,7 +52,7 @@ def init_db():
                 c.execute(f"DROP TABLE IF EXISTS {t}")
         c.executescript("""
         CREATE TABLE IF NOT EXISTS users(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY,
             name TEXT UNIQUE,
             password_hash TEXT,
             salt TEXT,
@@ -141,16 +141,18 @@ async def handle(req):
         if not name or not pw:
             return to_json(400, error="名字和密码都要有")
         salt = secrets.token_hex(16)
-        key = secrets.token_hex(24)
         with db() as c:
-            try:
-                cur = c.execute(
-                    "INSERT INTO users(name,password_hash,salt,user_key,created_at) VALUES(?,?,?,?,?)",
-                    (name, hash_pw(pw, salt), salt, key, int(time.time())))
-                uid = cur.lastrowid
-            except sqlite3.IntegrityError:
+            if c.execute("SELECT 1 FROM users WHERE name=?", (name,)).fetchone():
                 return to_json(409, error="名字已被占用")
-        return to_json(ok=True, user_id=uid, user_key=key, name=name)
+            row = c.execute("SELECT COALESCE(MAX(id),99999) FROM users").fetchone()
+            uid = int(row[0]) + 1
+            if uid > 999999:
+                uid = secrets.randbelow(900000) + 100000
+            ukey = str(uid)
+            c.execute(
+                "INSERT INTO users(id,name,password_hash,salt,user_key,created_at) VALUES(?,?,?,?,?,?)",
+                (uid, name, hash_pw(pw, salt), salt, ukey, int(time.time())))
+        return to_json(ok=True, user_id=uid, user_key=ukey, name=name)
 
     # 登录：user_id + 密码
     if path == "/api/login" and method == "POST":
