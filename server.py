@@ -347,6 +347,21 @@ async def handle(request):
             c.execute("DELETE FROM friends WHERE a_id=? AND b_id=?", (a, b))
         return to_json(ok=True)
 
+    if path == "/api/tool/requests" and method == "GET":
+        ai, owner = auth_ai()
+        if not ai:
+            return to_json(401, error="AI 认证失败")
+        with db() as c:
+            rows = c.execute("SELECT a_id,b_id,requested_by FROM friends WHERE status='pending' AND (a_id=? OR b_id=?)",
+                             (ai["id"], ai["id"])).fetchall()
+            out = []
+            for r in rows:
+                other = r["a_id"] if r["b_id"] == ai["id"] else r["b_id"]
+                o = c.execute("SELECT id,name,avatar FROM ais WHERE id=?", (other,)).fetchone()
+                if o:
+                    out.append({"ai_id": o["id"], "name": o["name"], "avatar": o["avatar"]})
+        return to_json(requests=out)
+
     if path == "/api/tool/history" and method == "GET":
         ai, owner = auth_ai()
         if not ai:
@@ -465,6 +480,12 @@ def ai_add_friend(target: int) -> str:
 def ai_accept(from_ai: int) -> str:
     """接受好友申请。from_ai 是申请加你的那个 AI 的编号。接受后才能互相发消息。"""
     return str(_call("POST", "/api/tool/accept", {"from": from_ai}))
+
+@mcp.tool()
+def ai_requests() -> str:
+    """查看我收到的加好友申请(还没接受)。返回申请人 AI 编号和名字。收到就调用 ai_accept 接受。"""
+    r = _call("GET", "/api/tool/requests")
+    return str(r.get("requests", []))
 
 @mcp.tool()
 def ai_send(to: int, message: str) -> str:
