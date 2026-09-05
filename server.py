@@ -115,8 +115,8 @@ async def buffer_msg(msg):
             del p[:len(p) - PENDING_MAX]
 
 
-def to_json(**kw):
-    return web.json_response(kw, dumps=lambda o: json.dumps(o, ensure_ascii=False))
+def to_json(status=200, **kw):
+    return web.json_response(kw, status=status, dumps=lambda o: json.dumps(o, ensure_ascii=False))
 
 
 async def handle(req):
@@ -139,7 +139,7 @@ async def handle(req):
         name = (data.get("name") or "").strip()
         pw = data.get("password") or ""
         if not name or not pw:
-            return to_json(error="名字和密码都要有"), 400
+            return to_json(400, error="名字和密码都要有")
         salt = secrets.token_hex(16)
         key = secrets.token_hex(24)
         with db() as c:
@@ -149,7 +149,7 @@ async def handle(req):
                     (name, hash_pw(pw, salt), salt, key, int(time.time())))
                 uid = cur.lastrowid
             except sqlite3.IntegrityError:
-                return to_json(error="名字已被占用"), 409
+                return to_json(409, error="名字已被占用")
         return to_json(ok=True, user_id=uid, user_key=key, name=name)
 
     # 登录：user_id + 密码
@@ -159,7 +159,7 @@ async def handle(req):
         with db() as c:
             row = c.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
         if not row or hash_pw(pw, row["salt"]) != row["password_hash"]:
-            return to_json(error="用户ID或密码错误"), 401
+            return to_json(401, error="用户ID或密码错误")
         return to_json(ok=True, user_id=row["id"], name=row["name"], user_key=row["user_key"])
 
     # ---------------- 用户自己的信息 / 名下AI（用 X-User-Key 认前端） ----------------
@@ -167,7 +167,7 @@ async def handle(req):
         with db() as c:
             u = user_by_key(c, uk)
         if not u:
-            return to_json(error="未认证"), 401
+            return to_json(401, error="未认证")
         return to_json(user_id=u["id"], name=u["name"])
 
     # 添加 AI：用户主页「添加AI」，生成AI账号+ai_key
@@ -175,10 +175,10 @@ async def handle(req):
         with db() as c:
             u = user_by_key(c, uk)
             if not u:
-                return to_json(error="未认证"), 401
+                return to_json(401, error="未认证")
             name = (data.get("name") or "").strip()
             if not name:
-                return to_json(error="要填AI名字"), 400
+                return to_json(400, error="要填AI名字")
             akey = secrets.token_hex(24)
             cur = c.execute("INSERT INTO ais(owner_id,name,ai_key,created_at) VALUES(?,?,?,?)",
                             (u["id"], name, akey, int(time.time())))
@@ -190,7 +190,7 @@ async def handle(req):
         with db() as c:
             u = user_by_key(c, uk)
             if not u:
-                return to_json(error="未认证"), 401
+                return to_json(401, error="未认证")
             rows = c.execute("SELECT id,name,ai_key,avatar FROM ais WHERE owner_id=?", (u["id"],)).fetchall()
         return to_json(ais=[dict(r) for r in rows])
 
@@ -210,7 +210,7 @@ async def handle(req):
     if path == "/api/tool/friends" and method == "GET":
         ai, owner = auth_ai()
         if not ai:
-            return to_json(error="AI 认证失败"), 401
+            return to_json(401, error="AI 认证失败")
         with db() as c:
             rows = c.execute(
                 "SELECT a_id,b_id FROM friends WHERE status='accepted' AND (a_id=? OR b_id=?)",
@@ -226,19 +226,19 @@ async def handle(req):
     if path == "/api/tool/add_friend" and method == "POST":
         ai, owner = auth_ai()
         if not ai:
-            return to_json(error="AI 认证失败"), 401
+            return to_json(401, error="AI 认证失败")
         target = data.get("target")  # AI id
         if not target or target == ai["id"]:
-            return to_json(error="目标无效"), 400
+            return to_json(400, error="目标无效")
         with db() as c:
             if not c.execute("SELECT id FROM ais WHERE id=?", (target,)).fetchone():
-                return to_json(error="目标不存在"), 404
+                return to_json(404, error="目标不存在")
             a, b = pair(ai["id"], target)
             try:
                 c.execute("INSERT INTO friends(a_id,b_id,status,requested_by,created_at) VALUES(?,?,?,?,?)",
                           (a, b, "pending", ai["id"], int(time.time())))
             except sqlite3.IntegrityError:
-                return to_json(error="已存在好友关系"), 409
+                return to_json(409, error="已存在好友关系")
             t_ai = c.execute("SELECT owner_id FROM ais WHERE id=?", (target,)).fetchone()
         if t_ai:
             await push(t_ai["owner_id"], {"type": "friend_request", "from": ai["id"]})
@@ -247,14 +247,14 @@ async def handle(req):
     if path == "/api/tool/accept" and method == "POST":
         ai, owner = auth_ai()
         if not ai:
-            return to_json(error="AI 认证失败"), 401
+            return to_json(401, error="AI 认证失败")
         frm = data.get("from")
         with db() as c:
             a, b = pair(ai["id"], frm)
             row = c.execute("SELECT requested_by FROM friends WHERE a_id=? AND b_id=? AND status='pending'",
                             (a, b)).fetchone()
             if not row:
-                return to_json(error="没有此请求"), 404
+                return to_json(404, error="没有此请求")
             c.execute("UPDATE friends SET status='accepted' WHERE a_id=? AND b_id=?", (a, b))
             from_ai = c.execute("SELECT owner_id FROM ais WHERE id=?", (frm,)).fetchone()
         if from_ai:
@@ -265,19 +265,19 @@ async def handle(req):
     if path == "/api/tool/send" and method == "POST":
         ai, owner = auth_ai()
         if not ai:
-            return to_json(error="AI 认证失败"), 401
+            return to_json(401, error="AI 认证失败")
         to = data.get("to")
         message = data.get("message")
         if not (to and message):
-            return to_json(error="缺字段"), 400
+            return to_json(400, error="缺字段")
         with db() as c:
             t_ai = c.execute("SELECT owner_id FROM ais WHERE id=?", (to,)).fetchone()
             if not t_ai:
-                return to_json(error="对方不存在"), 404
+                return to_json(404, error="对方不存在")
             a, b = pair(ai["id"], to)
             fr = c.execute("SELECT status FROM friends WHERE a_id=? AND b_id=?", (a, b)).fetchone()
             if not fr or fr["status"] != "accepted":
-                return to_json(error="还不是好友"), 403
+                return to_json(403, error="还不是好友")
         msg = {"from": ai["id"], "to": to, "message": message, "ts": int(time.time())}
         await buffer_msg(msg)                                  # 内存暂存(不落库)
         await push(t_ai["owner_id"], {"type": "message", "msg": msg})  # 实时推给主人前端
@@ -287,7 +287,7 @@ async def handle(req):
     if path == "/api/tool/read" and method == "GET":
         ai, owner = auth_ai()
         if not ai:
-            return to_json(error="AI 认证失败"), 401
+            return to_json(401, error="AI 认证失败")
         async with LOCK:
             msgs = list(PENDING.get(ai["id"], []))
             PENDING[ai["id"]] = []
@@ -297,7 +297,7 @@ async def handle(req):
     if path == "/api/tool/history" and method == "GET":
         ai, owner = auth_ai()
         if not ai:
-            return to_json(error="AI 认证失败"), 401
+            return to_json(401, error="AI 认证失败")
         count = int(data.get("count", 20))
         # 后端向该 AI 归属的前端(owner)发出请求；前端在 WS 上响应。
         # 这里先做成：把请求放到 WS 队列，等待前端回传；超时返回"前端未运行"。
@@ -332,7 +332,7 @@ async def handle(req):
             rows = c.execute("SELECT * FROM friends ORDER BY id").fetchall()
         return to_json(friends=[dict(r) for r in rows])
 
-    return to_json(error="未知接口"), 404
+    return to_json(404, error="未知接口")
 
 
 # ---------------- 历史请求(向前端要) ----------------
