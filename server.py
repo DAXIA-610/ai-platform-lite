@@ -483,7 +483,7 @@ def ai_history(count: int = 20) -> str:
 
 # ---------------- app ----------------
 def make_app():
-    mcp_app = mcp.http_app(path="/")
+    mcp_app = mcp.http_app(path="/", transport="streamable-http", stateless_http=True)
     routes = [
         Route("/api/{path:path}", handle, methods=["GET", "POST"]),
         WebSocketRoute("/ws", ws_endpoint),
