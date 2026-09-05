@@ -238,6 +238,21 @@ async def handle(request):
                 out.append(d)
         return to_json(ais=out)
 
+    if path == "/api/ai/delete" and method == "POST":
+        with db() as c:
+            u = user_by_key(c, uk)
+            if not u:
+                return to_json(401, error="未认证")
+            aid = data.get("ai_id")
+            if not aid:
+                return to_json(400, error="缺AI ID")
+            ai = c.execute("SELECT id FROM ais WHERE id=? AND owner_id=?", (aid, u["id"])).fetchone()
+            if not ai:
+                return to_json(404, error="AI不存在")
+            c.execute("DELETE FROM friends WHERE a_id=? OR b_id=?", (ai["id"], ai["id"]))
+            c.execute("DELETE FROM ais WHERE id=?", (ai["id"],))
+        return to_json(ok=True)
+
     # ---- tool (AI) ----
     if path == "/api/tool/friends" and method == "GET":
         ai, owner = auth_ai()

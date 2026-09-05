@@ -29,7 +29,7 @@
   .hero .u-name { font-size:24px; font-weight:700; }
   .hero .u-id { font-size:13px; color:#999; margin-top:6px; }
   .hero .hero-btns { position:absolute; right:16px; bottom:16px; display:flex; gap:8px; }
-  .ai-card { background:#fff; border:1px solid #eee; border-radius:16px; padding:14px; margin-bottom:12px; cursor:pointer; box-shadow:0 1px 4px rgba(0,0,0,.04); }
+  .ai-card { background:#fff; border:1px solid #eee; border-radius:16px; padding:14px; margin-bottom:12px; cursor:pointer; box-shadow:0 1px 4px rgba(0,0,0,.04); position:relative; }
   .ai-card.sel { border-color:#111; box-shadow:0 0 0 1px #111 inset; }
   .ai-main { display:flex; align-items:center; position:relative; }
   .ai-main .cimg { width:52px; height:52px; border-radius:50%; object-fit:cover; flex:none; }
@@ -38,7 +38,8 @@
   .ai-main .ai-txt b { font-size:16px; }
   .ai-main .ai-id { font-size:12px; color:#999; margin-top:2px; }
   .ai-main .fr-count { position:absolute; right:0; top:0; background:#f4f4f4; color:#666; border-radius:20px; padding:4px 10px; font-size:12px; }
-  .ai-card .key { margin-top:10px; padding-top:10px; border-top:1px solid #f0f0f0; font-family:monospace; font-size:11px; color:#0a7; word-break:break-all; }
+  .ai-card .key { margin-top:10px; padding-top:10px; padding-right:56px; border-top:1px solid #f0f0f0; font-family:monospace; font-size:11px; color:#0a7; word-break:break-all; }
+  .ai-del { position:absolute; right:14px; bottom:12px; background:#f0f0f0; color:#d33; border:none; border-radius:8px; padding:6px 12px; font-size:12px; cursor:pointer; }
   .empty { text-align:center; color:#999; padding:40px 0; font-size:14px; }
   .ai-sel { width:calc(100% - 24px); margin:12px; padding:12px; border:1px solid #ddd; border-radius:10px; }
   #pane-msg { display:none; flex:1; flex-direction:column; }
@@ -112,7 +113,6 @@
       <div><div class="u-name" id="hero-name"></div><div class="u-id" id="hero-id"></div></div>
       <div class="hero-btns">
         <button class="btn small gray" onclick="openSettings()">设置</button>
-        <button class="btn small" style="background:#d33" onclick="delAccount()">注销</button>
       </div>
     </div>
     <div id="ai-list"></div>
@@ -241,12 +241,21 @@ function renderAIs(){
     const el = document.createElement('div');
     el.className='ai-card'+(CUR_AI&&String(CUR_AI.id)===String(a.id)?' sel':'');
     const img = (a.avatar&&a.avatar.length>4) ? `<img class="cimg" src="${a.avatar}">` : `<div class="cinit">${(a.name||'?')[0]}</div>`;
-    el.innerHTML = `<div class="ai-main">${img}<div class="ai-txt"><b>${a.name}</b><div class="ai-id">ID：${a.id}</div></div><span class="fr-count">好友 ${a.friends||0}</span></div><div class="key">key：${a.ai_key}</div>`;
+    el.innerHTML = `<div class="ai-main">${img}<div class="ai-txt"><b>${a.name}</b><div class="ai-id">ID：${a.id}</div></div><span class="fr-count">好友 ${a.friends||0}</span></div><div class="key">key：${a.ai_key}</div><button class="ai-del" onclick="event.stopPropagation();delAI(${a.id},'${a.name}')">注销</button>`;
     el.onclick = ()=>pickAI(a);
     box.appendChild(el);
   });
 }
 function pickAI(a){ CUR_AI=a; renderAIs(); $('ai-sel').value=a.id; loadFriends(); }
+async function delAI(aid, name){
+  if(!confirm(`注销 AI「${name}」？会将它的密钥、ID、头像、聊天记录和好友一并删除，仅限这个AI，不影响账号和其他AI。`)) return;
+  const r=await api('/api/ai/delete',{method:'POST',body:JSON.stringify({ai_id:aid})});
+  if(r.ok){
+    const keys=[]; for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i); if(k&&k.startsWith('chat_'+aid+'_')) keys.push(k);}
+    keys.forEach(k=>localStorage.removeItem(k));
+    loadAIs();
+  } else alert(r.error||'注销失败');
+}
 function addAI(){ avatarData=''; $('m-name').value=''; $('m-preview').innerHTML='＋'; $('m-file').value=''; $('mask').style.display='flex'; }
 function closeAdd(){ $('mask').style.display='none'; }
 document.getElementById('m-file').addEventListener('change',e=>{
