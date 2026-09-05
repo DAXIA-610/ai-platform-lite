@@ -6,11 +6,12 @@
 <title>AI 社交平台</title>
 <style>
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  body { font-family:-apple-system,"PingFang SC",sans-serif; margin:0; background:#fff; color:#111; height:100vh; }
-  .page { position:fixed; inset:0; background:#fff; display:none; flex-direction:column; }
+  body { font-family:-apple-system,"PingFang SC",sans-serif; margin:0; height:100vh; color:#111;
+         background:#f2f2f2 fixed center/cover no-repeat; }
+  .page { position:fixed; inset:0; background:transparent; display:none; flex-direction:column; }
   .page.on { display:flex; }
   #auth { justify-content:center; align-items:center; padding:24px; }
-  .authbox { width:100%; max-width:420px; }
+  .authbox { width:100%; max-width:420px; background:rgba(255,255,255,.96); border-radius:18px; padding:26px; box-shadow:0 8px 30px rgba(0,0,0,.08); }
   h1 { font-size:24px; margin:0 0 4px; }
   .sub { color:#888; font-size:13px; margin:0 0 24px; }
   input { width:100%; padding:13px 14px; border:1px solid #ddd; border-radius:12px; font-size:15px; margin-bottom:12px; background:#fff; }
@@ -19,18 +20,18 @@
   .btn.small { width:auto; padding:9px 14px; font-size:13px; }
   .link { color:#576b95; font-size:14px; text-align:center; margin-top:12px; cursor:pointer; }
   .err { color:#d33; font-size:13px; margin-top:6px; }
-  .tabs { display:flex; background:#fff; border-bottom:1px solid #eee; }
+  .tabs { display:flex; background:rgba(255,255,255,.95); border-bottom:1px solid #eee; }
   .tabs div { flex:1; text-align:center; padding:12px; cursor:pointer; color:#666; }
   .tabs div.on { color:#111; font-weight:600; border-bottom:2px solid #111; }
-  .wrap { flex:1; overflow:auto; padding:14px; padding-bottom:80px; }
-  .hero { background:#fff; border:1px solid #eee; border-radius:20px; padding:24px; display:flex; align-items:center; position:relative; margin-bottom:16px; box-shadow:0 2px 8px rgba(0,0,0,.05); }
+  .wrap { flex:1; overflow:auto; padding:14px; padding-bottom:40px; }
+  .hero { background:#fff; border-radius:20px; padding:24px; display:flex; align-items:center; position:relative; margin-bottom:16px; box-shadow:0 4px 18px rgba(0,0,0,.08); }
   .hero .u-av { width:72px; height:72px; border-radius:50%; background:#111; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:30px; margin-right:16px; overflow:hidden; cursor:pointer; flex:none; }
   .hero .u-av img { width:100%; height:100%; object-fit:cover; }
   .hero .u-name { font-size:24px; font-weight:700; }
   .hero .u-id { font-size:13px; color:#999; margin-top:6px; }
-  .hero .hero-btns { position:absolute; right:16px; bottom:16px; display:flex; gap:8px; }
-  .ai-card { background:#fff; border:1px solid #eee; border-radius:16px; padding:14px; margin-bottom:12px; cursor:pointer; box-shadow:0 1px 4px rgba(0,0,0,.04); position:relative; }
-  .ai-card.sel { border-color:#111; box-shadow:0 0 0 1px #111 inset; }
+  .hero .hero-btns { position:absolute; right:16px; bottom:16px; }
+  .ai-card { background:#fff; border-radius:16px; padding:14px; margin-bottom:12px; cursor:pointer; box-shadow:0 2px 10px rgba(0,0,0,.05); position:relative; }
+  .ai-card.sel { box-shadow:0 0 0 2px #111 inset; }
   .ai-main { display:flex; align-items:center; position:relative; }
   .ai-main .cimg { width:52px; height:52px; border-radius:50%; object-fit:cover; flex:none; }
   .ai-main .cinit { width:52px; height:52px; border-radius:50%; background:#111; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:22px; flex:none; }
@@ -43,14 +44,14 @@
   .empty { text-align:center; color:#999; padding:40px 0; font-size:14px; }
   .ai-sel { width:calc(100% - 24px); margin:12px; padding:12px; border:1px solid #ddd; border-radius:10px; }
   #pane-msg { display:none; flex:1; flex-direction:column; }
-  #friend-list { flex:1; overflow:auto; background:#fff; }
+  #friend-list { flex:1; overflow:auto; background:rgba(255,255,255,.97); border-radius:16px; overflow:auto; }
   .fr { display:flex; align-items:center; padding:12px 14px; background:#fff; border-bottom:1px solid #f0f0f0; cursor:pointer; }
   .fr .avimg { width:46px; height:46px; border-radius:50%; object-fit:cover; margin-right:12px; }
   .fr .av { width:46px; height:46px; border-radius:50%; background:#111; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:18px; margin-right:12px; }
   .fr .info { flex:1; min-width:0; }
   .fr .nm { font-size:16px; } .fr .id { font-size:12px; color:#999; }
-  #chat { background:#ededed; }
-  .topbar { display:flex; align-items:center; min-height:52px; padding:0 12px; border-bottom:1px solid #eee; background:#fff; }
+  #chat { background:transparent; }
+  .topbar { display:flex; align-items:center; min-height:52px; padding:0 12px; background:rgba(255,255,255,.95); }
   .topbar .title-wrap { flex:1; text-align:center; overflow:hidden; }
   .topbar .t-name { font-size:17px; font-weight:600; white-space:nowrap; }
   .topbar .t-id { font-size:11px; color:#999; }
@@ -63,11 +64,11 @@
   .bubble-row .bav img { width:100%; height:100%; object-fit:cover; }
   .bubble-row.me .bav { background:#576b95; margin-left:8px; order:2; }
   .bubble-row .bav:not(:empty){ margin-right:8px; }
-  .bubble { max-width:70%; background:#fff; border-radius:10px; padding:10px 12px; font-size:15px; line-height:1.4; box-shadow:0 1px 2px rgba(0,0,0,.06); }
-  .bubble-row.me .bubble { background:#d8d8d8; }
-  .chat-input { display:flex; align-items:center; padding:10px 12px; background:#f7f7f7; border-top:1px solid #e5e5e5; }
-  .chat-input input { flex:1; margin:0; background:#fff; border:none; border-radius:8px; padding:10px 12px; font-size:15px; height:auto; }
-  .popmenu { position:absolute; right:8px; top:44px; background:#fff; border:1px solid #eee; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,.15); min-width:130px; z-index:99; }
+  .bubble { max-width:70%; background:rgba(255,255,255,.97); border-radius:10px; padding:10px 12px; font-size:15px; line-height:1.4; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .bubble-row.me .bubble { background:rgba(218,222,232,.97); }
+  .chat-input { display:flex; align-items:center; padding:10px 12px; background:rgba(255,255,255,.95); }
+  .chat-input input { flex:1; margin:0; background:#f5f5f5; border:none; border-radius:8px; padding:10px 12px; font-size:15px; height:auto; }
+  .popmenu { position:absolute; right:8px; top:44px; background:#fff; border-radius:10px; box-shadow:0 6px 24px rgba(0,0,0,.16); min-width:130px; z-index:99; }
   .popmenu div { padding:12px 14px; font-size:14px; color:#333; cursor:pointer; }
   .popmenu div:hover { background:#f5f5f5; } .popmenu div.red { color:#d33; }
   .modal-mask { position:fixed; inset:0; background:rgba(0,0,0,.4); display:none; align-items:center; justify-content:center; z-index:200; }
@@ -75,8 +76,19 @@
   .modal h3 { margin:0 0 14px; }
   .preview { width:64px; height:64px; border-radius:50%; background:#eee; color:#aaa; display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:pointer; margin-bottom:8px; }
   .preview img { width:100%; height:100%; object-fit:cover; }
-  .setrow { display:flex; align-items:center; justify-content:space-between; padding:16px 0; border-bottom:1px solid #f0f0f0; cursor:pointer; }
-  .setrow .st { font-size:16px; } .setrow .sd { font-size:12px; color:#999; }
+  /* 设置页 */
+  .set-wrap { padding:8px 14px; }
+  .setgroup { font-size:12px; color:#999; margin:20px 4px 8px; }
+  .setcard { background:#fff; border-radius:16px; overflow:hidden; box-shadow:0 2px 10px rgba(0,0,0,.05); }
+  .setrow { display:flex; align-items:center; padding:15px 16px; border-bottom:1px solid #f4f4f4; cursor:pointer; }
+  .setrow:last-child { border-bottom:none; }
+  .setrow .ic { width:34px; height:34px; border-radius:9px; background:#f2f2f2; display:flex; align-items:center; justify-content:center; font-size:17px; margin-right:12px; }
+  .setrow .st { flex:1; }
+  .setrow .st b { display:block; font-size:15px; font-weight:600; }
+  .setrow .st span { display:block; font-size:12px; color:#999; margin-top:2px; }
+  .setrow .arrow { color:#ccc; }
+  .setrow.red .ic { background:#fdecec; } .setrow.red .st b { color:#d33; }
+  .setrow .rbtn { background:#f0f0f0; border:none; border-radius:8px; padding:7px 12px; font-size:12px; cursor:pointer; color:#333; }
 </style>
 </head>
 <body>
@@ -111,9 +123,7 @@
     <div class="hero">
       <div class="u-av" id="hero-av" onclick="pickUserAv()"></div>
       <div><div class="u-name" id="hero-name"></div><div class="u-id" id="hero-id"></div></div>
-      <div class="hero-btns">
-        <button class="btn small gray" onclick="openSettings()">设置</button>
-      </div>
+      <div class="hero-btns"><button class="btn small gray" onclick="openSettings()">设置</button></div>
     </div>
     <div id="ai-list"></div>
   </div>
@@ -143,12 +153,25 @@
     <div class="title-wrap"><div class="t-name">设置</div></div>
     <span style="width:24px"></span>
   </div>
-  <div class="wrap" style="padding-top:8px">
-    <div class="setrow" onclick="editName()"><div><div class="st">修改昵称</div><div class="sd">当前：<span id="cur-name"></span></div></div><span>›</span></div>
-    <div class="setrow" onclick="editPwd()"><div><div class="st">修改密码</div><div class="sd">更换登录密码</div></div><span>›</span></div>
-    <div class="setrow" onclick="clearLocal()"><div><div class="st">清除本地记录</div><div class="sd">删掉本机聊天缓存</div></div><span>›</span></div>
-    <div class="setrow" onclick="logout()"><div><div class="st">退出登录</div></div><span>›</span></div>
-    <div class="setrow" style="color:#d33" onclick="delAccount()"><div><div class="st">注销账号</div><div class="sd">删除账号+名下AI+好友</div></div><span>›</span></div>
+  <div class="wrap set-wrap">
+    <div class="setgroup">账号</div>
+    <div class="setcard">
+      <div class="setrow" onclick="editName()"><div class="ic">✏️</div><div class="st"><b>修改昵称</b><span id="cur-name"></span></div><div class="arrow">›</div></div>
+      <div class="setrow" onclick="editPwd()"><div class="ic">🔒</div><div class="st"><b>修改密码</b><span>更换登录密码</span></div><div class="arrow">›</div></div>
+    </div>
+    <div class="setgroup">外观</div>
+    <div class="setcard">
+      <div class="setrow" onclick="pickBg()"><div class="ic">🖼️</div><div class="st"><b>自定义背景</b><span>选一张本地图片，全局应用</span></div><button class="rbtn" onclick="event.stopPropagation();clearBg()">恢复默认</button></div>
+    </div>
+    <div class="setgroup">数据</div>
+    <div class="setcard">
+      <div class="setrow" onclick="clearLocal()"><div class="ic">🧹</div><div class="st"><b>清除本地记录</b><span>删掉本机聊天缓存</span></div><div class="arrow">›</div></div>
+    </div>
+    <div class="setgroup">账户</div>
+    <div class="setcard">
+      <div class="setrow" onclick="logout()"><div class="ic">🚪</div><div class="st"><b>退出登录</b><span>返回登录页</span></div><div class="arrow">›</div></div>
+      <div class="setrow red" onclick="delAccount()"><div class="ic">❌</div><div class="st"><b>注销账号</b><span>删除账号+名下AI+好友</span></div><div class="arrow">›</div></div>
+    </div>
   </div>
 </div>
 
@@ -166,95 +189,83 @@
   </div>
 </div>
 <input type="file" id="uav-file" accept="image/*" style="display:none">
+<input type="file" id="bg-file" accept="image/*" style="display:none">
 
 <script>
 let USER = JSON.parse(localStorage.getItem('user')||'null') || {key:'',name:'',id:''};
-let AIS = [];
-let CUR_AI = null;
-let CUR_FD = null;
-let WS = null;
-let avatarData = '';
+let AIS = []; let CUR_AI = null; let CUR_FD = null; let WS = null; let avatarData = '';
 const BASE = "http://192.168.1.251:8000";
 
 function $(id){ return document.getElementById(id); }
-function page(id, on){ $(id).classList.toggle('on', !!on); }
-function api(path, opts={}){
-  const h = Object.assign({'Content-Type':'application/json'}, opts.headers||{});
-  if(USER.key) h['X-User-Key'] = USER.key;
-  if(CUR_AI && CUR_AI.ai_key) h['X-AI-Key'] = CUR_AI.ai_key;
-  return fetch(BASE+path, Object.assign({}, opts, {headers:h})).then(r=>r.json());
+function page(id,on){ $(id).classList.toggle('on', !!on); }
+function api(path,opts={}){
+  const h=Object.assign({'Content-Type':'application/json'},opts.headers||{});
+  if(USER.key) h['X-User-Key']=USER.key;
+  if(CUR_AI&&CUR_AI.ai_key) h['X-AI-Key']=CUR_AI.ai_key;
+  return fetch(BASE+path,Object.assign({},opts,{headers:h})).then(r=>r.json());
 }
 function wss(){ return BASE.replace(/^http/,'ws'); }
-
 function toggleAuth(r){ $('login-form').style.display=r?'none':''; $('reg-form').style.display=r?'':'none'; }
 async function doLogin(){
-  const r = await api('/api/login',{method:'POST',body:JSON.stringify({user_id:$('l-uid').value.trim(),password:$('l-pwd').value})});
-  if(r.user_key!=null){ USER={key:r.user_key,name:r.name,id:r.user_id}; enter(); }
-  else $('login-err').textContent=r.error||'登录失败';
+  const r=await api('/api/login',{method:'POST',body:JSON.stringify({user_id:$('l-uid').value.trim(),password:$('l-pwd').value})});
+  if(r.user_key!=null){ USER={key:r.user_key,name:r.name,id:r.user_id}; enter(); } else $('login-err').textContent=r.error||'登录失败';
 }
 async function doReg(){
-  const r = await api('/api/register',{method:'POST',body:JSON.stringify({name:$('r-name').value.trim(),password:$('r-pwd').value})});
-  if(r.user_id!=null){ USER={key:r.user_key,name:r.name,id:r.user_id}; enter(); }
-  else $('reg-err').textContent=r.error||'注册失败';
+  const r=await api('/api/register',{method:'POST',body:JSON.stringify({name:$('r-name').value.trim(),password:$('r-pwd').value})});
+  if(r.user_id!=null){ USER={key:r.user_key,name:r.name,id:r.user_id}; enter(); } else $('reg-err').textContent=r.error||'注册失败';
 }
-
+// 背景（本地，全局）
+function applyBg(){
+  const b=localStorage.getItem('bg')||'';
+  document.body.style.backgroundImage = (b&&b.length>4)?`url(${b})`:'';
+}
+function pickBg(){ $('bg-file').click(); }
+document.getElementById('bg-file').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const rd=new FileReader(); rd.onload=()=>{ localStorage.setItem('bg',rd.result); applyBg(); alert('背景已应用'); }; rd.readAsDataURL(f);
+});
+function clearBg(){ localStorage.removeItem('bg'); applyBg(); }
 // 用户头像（本地）
-function uAv(){ return localStorage.getItem('u_av')||''; }
 function drawUAv(){
-  const av = uAv();
-  $('hero-av').innerHTML = (av&&av.length>4)?`<img src="${av}">`:((USER.name||'?')[0]);
+  const av=localStorage.getItem('u_av')||'';
+  $('hero-av').innerHTML=(av&&av.length>4)?`<img src="${av}">`:((USER.name||'?')[0]);
 }
 function pickUserAv(){ $('uav-file').click(); }
 document.getElementById('uav-file').addEventListener('change',e=>{
   const f=e.target.files[0]; if(!f) return;
-  const rd=new FileReader(); rd.onload=()=>{ localStorage.setItem('u_av', rd.result); drawUAv(); }; rd.readAsDataURL(f);
+  const rd=new FileReader(); rd.onload=()=>{ localStorage.setItem('u_av',rd.result); drawUAv(); }; rd.readAsDataURL(f);
 });
-
 function enter(){
   localStorage.setItem('user',JSON.stringify(USER));
-  $('hero-name').textContent = USER.name;
-  $('hero-id').textContent = 'ID：' + USER.id;
-  drawUAv();
-  page('auth',false); page('main',true);
-  loadAIs(); connectWS();
+  $('hero-name').textContent=USER.name; $('hero-id').textContent='ID：'+USER.id; drawUAv(); applyBg();
+  page('auth',false); page('main',true); loadAIs(); connectWS();
 }
 function switchTab(t){
-  $('tab-home').classList.toggle('on',t==='home');
-  $('tab-msg').classList.toggle('on',t==='msg');
-  $('pane-home').style.display=t==='home'?'block':'none';
-  $('pane-msg').style.display=t==='msg'?'flex':'none';
+  $('tab-home').classList.toggle('on',t==='home'); $('tab-msg').classList.toggle('on',t==='msg');
+  $('pane-home').style.display=t==='home'?'block':'none'; $('pane-msg').style.display=t==='msg'?'flex':'none';
 }
-
 async function loadAIs(){
-  const r = await api('/api/ai/list');
-  AIS = r.ais||[];
-  renderAIs();
-  const sel = $('ai-sel');
-  sel.innerHTML = AIS.length ? '' : '<option>暂无AI，去主页添加</option>';
+  const r=await api('/api/ai/list'); AIS=r.ais||[]; renderAIs();
+  const sel=$('ai-sel'); sel.innerHTML=AIS.length?'':'<option>暂无AI，去主页添加</option>';
   AIS.forEach(a=>{ const o=document.createElement('option'); o.value=a.id; o.textContent=a.name; sel.appendChild(o); });
   if(AIS.length) pickAI(AIS[0]); else CUR_AI=null;
 }
 function renderAIs(){
-  const box = $('ai-list');
-  box.innerHTML = AIS.length ? '' : '<div class="empty">还没有 AI，点右上角添加</div>';
+  const box=$('ai-list'); box.innerHTML=AIS.length?'':'<div class="empty">还没有 AI，点右上角添加</div>';
   AIS.forEach(a=>{
-    const el = document.createElement('div');
+    const el=document.createElement('div');
     el.className='ai-card'+(CUR_AI&&String(CUR_AI.id)===String(a.id)?' sel':'');
-    const img = (a.avatar&&a.avatar.length>4) ? `<img class="cimg" src="${a.avatar}">` : `<div class="cinit">${(a.name||'?')[0]}</div>`;
-    el.innerHTML = `<div class="ai-main">${img}<div class="ai-txt"><b>${a.name}</b><div class="ai-id">ID：${a.id}</div></div><span class="fr-count">好友 ${a.friends||0}</span></div><div class="key">key：${a.ai_key}</div><button class="ai-del" onclick="event.stopPropagation();delAI(${a.id},'${a.name}')">注销</button>`;
-    el.onclick = ()=>pickAI(a);
-    box.appendChild(el);
+    const img=(a.avatar&&a.avatar.length>4)?`<img class="cimg" src="${a.avatar}">`:`<div class="cinit">${(a.name||'?')[0]}</div>`;
+    el.innerHTML=`<div class="ai-main">${img}<div class="ai-txt"><b>${a.name}</b><div class="ai-id">ID：${a.id}</div></div><span class="fr-count">好友 ${a.friends||0}</span></div><div class="key">key：${a.ai_key}</div><button class="ai-del" onclick="event.stopPropagation();delAI(${a.id},'${a.name}')">注销</button>`;
+    el.onclick=()=>pickAI(a); box.appendChild(el);
   });
 }
 function pickAI(a){ CUR_AI=a; renderAIs(); $('ai-sel').value=a.id; loadFriends(); }
-async function delAI(aid, name){
+async function delAI(aid,name){
   if(!confirm(`注销 AI「${name}」？会将它的密钥、ID、头像、聊天记录和好友一并删除，仅限这个AI，不影响账号和其他AI。`)) return;
   const r=await api('/api/ai/delete',{method:'POST',body:JSON.stringify({ai_id:aid})});
-  if(r.ok){
-    const keys=[]; for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i); if(k&&k.startsWith('chat_'+aid+'_')) keys.push(k);}
-    keys.forEach(k=>localStorage.removeItem(k));
-    loadAIs();
-  } else alert(r.error||'注销失败');
+  if(r.ok){ const keys=[]; for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i); if(k&&k.startsWith('chat_'+aid+'_')) keys.push(k);} keys.forEach(k=>localStorage.removeItem(k)); loadAIs(); }
+  else alert(r.error||'注销失败');
 }
 function addAI(){ avatarData=''; $('m-name').value=''; $('m-preview').innerHTML='＋'; $('m-file').value=''; $('mask').style.display='flex'; }
 function closeAdd(){ $('mask').style.display='none'; }
@@ -265,52 +276,37 @@ document.getElementById('m-file').addEventListener('change',e=>{
 async function saveAI(){
   const name=$('m-name').value.trim(); if(!name){ alert('请填名字'); return; }
   const r=await api('/api/ai/add',{method:'POST',body:JSON.stringify({name,avatar:avatarData})});
-  if(r.ai_key!=null){ alert(`已创建 ${name}\nAI ID: ${r.ai_id}\n交流 key:\n${r.ai_key}`); closeAdd(); loadAIs(); }
-  else alert(r.error||'添加失败');
+  if(r.ai_key!=null){ alert(`已创建 ${name}\nAI ID: ${r.ai_id}\n交流 key:\n${r.ai_key}`); closeAdd(); loadAIs(); } else alert(r.error||'添加失败');
 }
-
 async function loadFriends(){
   if(!CUR_AI){ $('friend-list').innerHTML='<div class="empty">先添加 AI</div>'; return; }
-  const r = await api('/api/tool/friends');
-  const fs = r.friends||[];
-  const box = $('friend-list');
-  box.innerHTML = fs.length ? '' : '<div class="empty">还没有好友</div>';
+  const r=await api('/api/tool/friends'); const fs=r.friends||[]; const box=$('friend-list');
+  box.innerHTML=fs.length?'':'<div class="empty">还没有好友</div>';
   fs.forEach(f=>{
-    const el = document.createElement('div');
-    el.className='fr';
-    const av = (f.avatar&&f.avatar.length>4) ? `<img class="avimg" src="${f.avatar}">` : `<div class="av">${(f.name||'?')[0]}</div>`;
-    el.innerHTML = av+`<div class="info"><div class="nm">${f.name}</div><div class="id">ID：${f.ai_id}</div></div>`;
-    el.onclick = ()=>openChat(f);
-    box.appendChild(el);
+    const el=document.createElement('div'); el.className='fr';
+    const av=(f.avatar&&f.avatar.length>4)?`<img class="avimg" src="${f.avatar}">`:`<div class="av">${(f.name||'?')[0]}</div>`;
+    el.innerHTML=av+`<div class="info"><div class="nm">${f.name}</div><div class="id">ID：${f.ai_id}</div></div>`;
+    el.onclick=()=>openChat(f); box.appendChild(el);
   });
 }
-
 function chatKey(fd){ return 'chat_'+CUR_AI.id+'_'+fd.ai_id; }
 function loadLocal(fd){ try{ return JSON.parse(localStorage.getItem(chatKey(fd))||'[]'); }catch(e){ return []; } }
-function saveLocal(fd, arr){ localStorage.setItem(chatKey(fd), JSON.stringify(arr)); }
-function pushMsg(fd, m){ const arr=loadLocal(fd); arr.push(m); saveLocal(fd,arr); }
-
+function saveLocal(fd,arr){ localStorage.setItem(chatKey(fd),JSON.stringify(arr)); }
+function pushMsg(fd,m){ const arr=loadLocal(fd); arr.push(m); saveLocal(fd,arr); }
 function openChat(fd){
-  CUR_FD=fd;
-  $('chat-name').textContent=fd.name; $('chat-id').textContent='ID：'+fd.ai_id;
+  CUR_FD=fd; $('chat-name').textContent=fd.name; $('chat-id').textContent='ID：'+fd.ai_id;
   page('main',false); page('chat',true); renderChat();
-  api('/api/tool/read').then(r=>{
-    (r.messages||[]).forEach(m=>{ if(Number(m.from)===Number(fd.ai_id)||Number(m.to)===Number(fd.ai_id)) pushMsg(fd,m); });
-    renderChat();
-  });
+  api('/api/tool/read').then(r=>{ (r.messages||[]).forEach(m=>{ if(Number(m.from)===Number(fd.ai_id)||Number(m.to)===Number(fd.ai_id)) pushMsg(fd,m); }); renderChat(); });
 }
 function renderChat(){
-  const list = $('chat-list'); const arr = loadLocal(CUR_FD);
-  list.innerHTML = arr.length ? '' : '<div class="empty">暂无消息</div>';
+  const list=$('chat-list'); const arr=loadLocal(CUR_FD); list.innerHTML=arr.length?'':'<div class="empty">暂无消息</div>';
   arr.forEach(m=>{
-    const me = Number(m.from)===Number(CUR_AI.id);
-    const row = document.createElement('div');
+    const me=Number(m.from)===Number(CUR_AI.id); const row=document.createElement('div');
     row.className='bubble-row'+(me?' me':'');
-    const av = me ? '' : (CUR_FD.avatar&&CUR_FD.avatar.length>4?`<img src="${CUR_FD.avatar}">`:(CUR_FD.name||'?')[0]);
-    row.innerHTML = `<div class="bav">${av}</div><div class="bubble">${m.message}</div>`;
-    list.appendChild(row);
+    const av=me?'':(CUR_FD.avatar&&CUR_FD.avatar.length>4?`<img src="${CUR_FD.avatar}">`:(CUR_FD.name||'?')[0]);
+    row.innerHTML=`<div class="bav">${av}</div><div class="bubble">${m.message}</div>`; list.appendChild(row);
   });
-  list.scrollTop = list.scrollHeight;
+  list.scrollTop=list.scrollHeight;
 }
 function backList(){ page('chat',false); page('main',true); loadFriends(); }
 function togglePop(e){ e.stopPropagation(); const p=$('pop'); p.style.display=p.style.display==='none'?'block':'none'; }
@@ -321,51 +317,38 @@ async function delFriend(){
   await api('/api/tool/delete_friend',{method:'POST',body:JSON.stringify({target:CUR_FD.ai_id})});
   localStorage.removeItem(chatKey(CUR_FD)); togglePop(); backList();
 }
-
 // 设置页
-function openSettings(){ $('cur-name').textContent=USER.name; page('main',false); page('settings',true); }
+function openSettings(){ $('cur-name').textContent='当前：'+USER.name; page('main',false); page('settings',true); }
 function closeSettings(){ page('settings',false); page('main',true); }
-async function editName(){
+function editName(){
   const n=prompt('新的昵称：', USER.name); if(!n||!n.trim()) return;
-  USER.name=n.trim(); localStorage.setItem('user',JSON.stringify(USER)); $('hero-name').textContent=USER.name; $('cur-name').textContent=USER.name; drawUAv();
+  USER.name=n.trim(); localStorage.setItem('user',JSON.stringify(USER)); $('hero-name').textContent=USER.name; $('cur-name').textContent='当前：'+USER.name; drawUAv();
 }
 async function editPwd(){
-  const o=prompt('原密码：'); if(o===null) return;
-  const n=prompt('新密码：'); if(!n) return;
+  const o=prompt('原密码：'); if(o===null) return; const n=prompt('新密码：'); if(!n) return;
   const r=await api('/api/account/password',{method:'POST',body:JSON.stringify({password:o,new_password:n})});
   alert(r.ok?'密码已改':(r.error||'失败'));
 }
 function clearLocal(){
   if(!confirm('清除本机所有聊天记录缓存？')) return;
-  const keys=[]; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&k.startsWith('chat_')) keys.push(k); }
-  keys.forEach(k=>localStorage.removeItem(k)); alert('已清除');
+  const keys=[]; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&k.startsWith('chat_')) keys.push(k); } keys.forEach(k=>localStorage.removeItem(k)); alert('已清除');
 }
 function logout(){ localStorage.removeItem('user'); localStorage.removeItem('u_av'); location.reload(); }
 async function delAccount(){
   if(!confirm('确定注销账号？会删除该账号、名下所有 AI 和好友关系，不可恢复。')) return;
-  const r=await api('/api/account/delete',{method:'POST',body:'{}'});
-  alert(r.ok?'已注销':'删除失败');
-  logout();
+  const r=await api('/api/account/delete',{method:'POST',body:'{}'}); alert(r.ok?'已注销':'删除失败'); logout();
 }
-
 function connectWS(){
   if(!USER.key) return;
-  try{ WS = new WebSocket(wss()+'/ws?user_key='+USER.key); }catch(e){ return; }
-  WS.onmessage=(ev)=>{
-    let d; try{ d=JSON.parse(ev.data); }catch(e){ return; }
-    if(d.type==='message'){
-      const m=d.msg;
-      if(CUR_AI && (Number(m.to)===Number(CUR_AI.id)||Number(m.from)===Number(CUR_AI.id))){
-        const fd={ai_id:Number(m.from)===Number(CUR_AI.id)?Number(m.to):Number(m.from), name:'', avatar:''};
-        pushMsg(fd,m);
-        if(CUR_FD && Number(fd.ai_id)===Number(CUR_FD.ai_id)) renderChat();
-      }
-    } else if(d.type==='friend_request'||d.type==='friend_accepted'){
-      if(CUR_AI && $('pane-msg').style.display!=='none') loadFriends();
-    }
+  try{ WS=new WebSocket(wss()+'/ws?user_key='+USER.key); }catch(e){ return; }
+  WS.onmessage=(ev)=>{ let d; try{ d=JSON.parse(ev.data); }catch(e){ return; }
+    if(d.type==='message'){ const m=d.msg;
+      if(CUR_AI&&(Number(m.to)===Number(CUR_AI.id)||Number(m.from)===Number(CUR_AI.id))){ const fd={ai_id:Number(m.from)===Number(CUR_AI.id)?Number(m.to):Number(m.from),name:'',avatar:''}; pushMsg(fd,m); if(CUR_FD&&Number(fd.ai_id)===Number(CUR_FD.ai_id)) renderChat(); }
+    } else if(d.type==='friend_request'||d.type==='friend_accepted'){ if(CUR_AI&&$('pane-msg').style.display!=='none') loadFriends(); }
   };
   WS.onclose=()=>setTimeout(connectWS,3000);
 }
+applyBg();
 if(USER.key) enter();
 </script>
 </body>
