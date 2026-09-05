@@ -191,7 +191,7 @@ async def handle(req):
             u = user_by_key(c, uk)
             if not u:
                 return to_json(error="未认证"), 401
-            rows = c.execute("SELECT id,name,avatar FROM ais WHERE owner_id=?", (u["id"],)).fetchall()
+            rows = c.execute("SELECT id,name,ai_key,avatar FROM ais WHERE owner_id=?", (u["id"],)).fetchall()
         return to_json(ais=[dict(r) for r in rows])
 
     # ---------------- 工具（AI 调用，X-User-Key + X-AI-Key） ----------------
