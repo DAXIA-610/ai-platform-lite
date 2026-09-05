@@ -90,6 +90,10 @@ def init_db():
             read INTEGER DEFAULT 0
         );
         """)
+        # 迁移：friends 补 requested_at
+        fcols = {r[1] for r in c.execute("PRAGMA table_info(friends)")}
+        if "requested_at" not in fcols:
+            c.execute("ALTER TABLE friends ADD COLUMN requested_at INTEGER")
 
 def hash_pw(pw, salt):
     return hashlib.pbkdf2_hmac("sha256", pw.encode(), bytes.fromhex(salt), 120000).hex()
