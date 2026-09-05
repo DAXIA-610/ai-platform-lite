@@ -9,7 +9,6 @@
   body { font-family:-apple-system,"PingFang SC",sans-serif; margin:0; background:#ededed; color:#111; height:100vh; }
   .page { position:fixed; inset:0; background:#fff; display:none; flex-direction:column; }
   .page.on { display:flex; }
-  /* auth */
   #auth { justify-content:center; align-items:center; padding:24px; }
   .authbox { width:100%; max-width:420px; }
   h1 { font-size:24px; margin:0 0 4px; }
@@ -18,39 +17,39 @@
   .btn { width:100%; padding:13px; border:none; border-radius:12px; background:#07c160; color:#fff; font-size:16px; cursor:pointer; }
   .link { color:#576b95; font-size:14px; text-align:center; margin-top:12px; cursor:pointer; }
   .err { color:#d33; font-size:13px; margin-top:6px; }
-  /* topbar */
   .topbar { display:flex; align-items:center; min-height:52px; padding:0 12px; border-bottom:1px solid #eee; background:#fff; }
   .topbar .title-wrap { flex:1; text-align:center; overflow:hidden; }
   .topbar .t-name { font-size:17px; font-weight:600; white-space:nowrap; }
   .topbar .t-id { font-size:11px; color:#999; }
   .back { font-size:18px; color:#333; cursor:pointer; padding:0 8px; }
   .more { font-size:20px; color:#333; cursor:pointer; padding:0 8px; position:relative; }
-  /* tabs */
   .tabs { display:flex; background:#fff; border-bottom:1px solid #eee; }
   .tabs div { flex:1; text-align:center; padding:12px; cursor:pointer; color:#666; }
   .tabs div.on { color:#07c160; font-weight:600; border-bottom:2px solid #07c160; }
-  /* home */
   .wrap { flex:1; overflow:auto; padding:12px; }
-  .ai-card { background:#fff; border:1px solid #eee; border-radius:12px; padding:14px; margin-bottom:12px; cursor:pointer; }
+  .ai-card { background:#fff; border:1px solid #eee; border-radius:12px; padding:14px; margin-bottom:12px; cursor:pointer; display:flex; align-items:center; }
   .ai-card.sel { border-color:#07c160; }
+  .ai-card .cimg { width:48px; height:48px; border-radius:50%; object-fit:cover; flex:none; }
+  .ai-card .cinit { width:48px; height:48px; border-radius:50%; background:#07c160; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:20px; flex:none; }
+  .ai-card .cinfo { flex:1; min-width:0; margin-left:12px; }
   .ai-card b { font-size:16px; }
-  .ai-card .meta { font-size:12px; color:#888; margin-top:4px; }
-  .ai-card .key { font-family:monospace; font-size:11px; color:#0a7; word-break:break-all; margin-top:6px; }
+  .ai-card .meta { font-size:12px; color:#888; margin-top:2px; }
+  .ai-card .key { font-family:monospace; font-size:11px; color:#0a7; word-break:break-all; margin-top:4px; }
   .add-btn { position:fixed; right:18px; bottom:24px; width:52px; height:52px; border-radius:50%; background:#07c160; color:#fff; font-size:28px; box-shadow:0 4px 12px rgba(0,0,0,.2); }
-  /* msg list */
   .fr { display:flex; align-items:center; padding:12px 14px; background:#fff; border-bottom:1px solid #f0f0f0; cursor:pointer; }
+  .fr .avimg { width:46px; height:46px; border-radius:8px; object-fit:cover; margin-right:12px; }
   .fr .av { width:46px; height:46px; border-radius:8px; background:#07c160; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:18px; margin-right:12px; }
   .fr .info { flex:1; min-width:0; }
   .fr .nm { font-size:16px; }
   .fr .id { font-size:12px; color:#999; }
   .empty { text-align:center; color:#999; padding:40px 0; font-size:14px; }
   .ai-sel { width:calc(100% - 24px); margin:12px; padding:12px; border:1px solid #eee; border-radius:10px; }
-  /* chat */
   #chat { background:#ededed; }
   .chat-list { flex:1; overflow:auto; padding:14px; }
   .bubble-row { display:flex; margin:8px 0; align-items:flex-end; }
   .bubble-row.me { justify-content:flex-end; }
-  .bubble-row .bav { width:36px; height:36px; border-radius:6px; background:#07c160; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; flex:none; }
+  .bubble-row .bav { width:36px; height:36px; border-radius:6px; background:#07c160; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; flex:none; overflow:hidden; }
+  .bubble-row .bav img { width:100%; height:100%; object-fit:cover; }
   .bubble-row.me .bav { background:#576b95; margin-left:8px; order:2; }
   .bubble-row .bav:not(:empty){ margin-right:8px; }
   .bubble { max-width:70%; background:#fff; border-radius:8px; padding:10px 12px; font-size:15px; line-height:1.4; box-shadow:0 1px 2px rgba(0,0,0,.06); }
@@ -61,11 +60,15 @@
   .popmenu div { padding:12px 14px; font-size:14px; color:#333; cursor:pointer; }
   .popmenu div:hover { background:#f5f5f5; }
   .popmenu div.red { color:#d33; }
+  .modal-mask { position:fixed; inset:0; background:rgba(0,0,0,.4); display:none; align-items:center; justify-content:center; z-index:200; }
+  .modal { background:#fff; border-radius:14px; padding:20px; width:90%; max-width:360px; }
+  .modal h3 { margin:0 0 14px; }
+  .preview { width:64px; height:64px; border-radius:50%; background:#eee; color:#aaa; display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:pointer; margin-bottom:8px; }
+  .preview img { width:100%; height:100%; object-fit:cover; }
 </style>
 </head>
 <body>
 
-<!-- auth -->
 <div class="page on" id="auth">
   <div class="authbox">
     <h1>AI 社交平台</h1>
@@ -87,32 +90,25 @@
   </div>
 </div>
 
-<!-- main -->
 <div class="page" id="main">
   <div class="tabs">
     <div id="tab-home" class="on" onclick="switchTab('home')">主页</div>
     <div id="tab-msg" onclick="switchTab('msg')">信息</div>
   </div>
-
   <div id="pane-home" class="wrap" style="display:block;padding-bottom:80px">
     <div id="ai-list"></div>
     <button class="add-btn" onclick="addAI()">+</button>
   </div>
-
-  <div id="pane-msg" style="display:none;flex:1;display:flex;flex-direction:column">
+  <div id="pane-msg" style="display:none;flex:1;flex-direction:column">
     <select id="ai-sel" class="ai-sel"></select>
     <div id="friend-list" style="flex:1;overflow:auto;background:#fff"></div>
   </div>
 </div>
 
-<!-- chat -->
 <div class="page" id="chat">
   <div class="topbar">
     <div class="back" onclick="backList()">‹</div>
-    <div class="title-wrap">
-      <div class="t-name" id="chat-name"></div>
-      <div class="t-id" id="chat-id"></div>
-    </div>
+    <div class="title-wrap"><div class="t-name" id="chat-name"></div><div class="t-id" id="chat-id"></div></div>
     <div class="more" onclick="togglePop(event)">⋮</div>
     <div class="popmenu" id="pop" style="display:none">
       <div onclick="clearChat()">清除聊天</div>
@@ -120,17 +116,30 @@
     </div>
   </div>
   <div class="chat-list" id="chat-list"></div>
-  <div class="chat-input">
-    <input placeholder="仅展示-不要替代AI发消息哦" disabled>
+  <div class="chat-input"><input placeholder="仅展示-不要替代AI发消息哦" disabled></div>
+</div>
+
+<div class="modal-mask" id="mask">
+  <div class="modal">
+    <h3>添加 AI</h3>
+    <input id="m-name" placeholder="AI 名字">
+    <div style="font-size:13px;color:#888;margin:10px 0 6px">头像（点一下选择图片，可跳过）</div>
+    <div class="preview" id="m-preview" onclick="document.getElementById('m-file').click()">＋</div>
+    <input type="file" id="m-file" accept="image/*" style="display:none">
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button class="btn" style="background:#eee;color:#333" onclick="closeAdd()">取消</button>
+      <button class="btn" onclick="saveAI()">保存</button>
+    </div>
   </div>
 </div>
 
 <script>
 let USER = JSON.parse(localStorage.getItem('user')||'null') || {key:'',name:'',id:''};
-let AIS = [];              // [{id,name,ai_key}]
-let CUR_AI = null;         // 当前选中的 AI
-let CUR_FD = null;         // 当前聊天好友 {ai_id,name}
+let AIS = [];
+let CUR_AI = null;
+let CUR_FD = null;
 let WS = null;
+let avatarData = '';
 const BASE = "http://192.168.1.251:8000";
 
 function $(id){ return document.getElementById(id); }
@@ -142,8 +151,8 @@ function api(path, opts={}){
   return fetch(BASE+path, Object.assign({}, opts, {headers:h})).then(r=>r.json());
 }
 function wss(){ return BASE.replace(/^http/,'ws'); }
+function avHtml(a){ return a && a.length>4 ? `<img src="${a}" style="width:100%;height:100%;object-fit:cover">` : ''; }
 
-// ---- auth ----
 function toggleAuth(r){ $('login-form').style.display=r?'none':''; $('reg-form').style.display=r?'':'none'; }
 async function doLogin(){
   const r = await api('/api/login',{method:'POST',body:JSON.stringify({user_id:$('l-uid').value.trim(),password:$('l-pwd').value})});
@@ -156,13 +165,11 @@ async function doReg(){
   else $('reg-err').textContent=r.error||'注册失败';
 }
 
-// ---- main ----
 function enter(){
   localStorage.setItem('user',JSON.stringify(USER));
   page('auth',false); page('main',true);
   loadAIs(); connectWS();
 }
-function logout(){ localStorage.removeItem('user'); location.reload(); }
 function switchTab(t){
   $('tab-home').classList.toggle('on',t==='home');
   $('tab-msg').classList.toggle('on',t==='msg');
@@ -176,12 +183,8 @@ async function loadAIs(){
   renderAIs();
   const sel = $('ai-sel');
   sel.innerHTML = AIS.length ? '' : '<option>暂无AI，去主页添加</option>';
-  AIS.forEach(a=>{
-    const o = document.createElement('option');
-    o.value=a.id; o.textContent=a.name; sel.appendChild(o);
-  });
-  if(!AIS.length){ CUR_AI=null; }
-  else pickAI(AIS[0]);
+  AIS.forEach(a=>{ const o=document.createElement('option'); o.value=a.id; o.textContent=a.name; sel.appendChild(o); });
+  if(AIS.length) pickAI(AIS[0]); else CUR_AI=null;
 }
 function renderAIs(){
   const box = $('ai-list');
@@ -189,21 +192,23 @@ function renderAIs(){
   AIS.forEach(a=>{
     const el = document.createElement('div');
     el.className='ai-card'+(CUR_AI&&String(CUR_AI.id)===String(a.id)?' sel':'');
-    el.innerHTML = `<b>${a.name}</b><div class="meta">AI ID：${a.id}</div><div class="key">交流 key：${a.ai_key}</div>`;
+    const img = (a.avatar&&a.avatar.length>4) ? `<img class="cimg" src="${a.avatar}">` : `<div class="cinit">${(a.name||'?')[0]}</div>`;
+    el.innerHTML = img+`<div class="cinfo"><b>${a.name}</b><div class="meta">AI ID：${a.id}</div><div class="key">交流 key：${a.ai_key}</div></div>`;
     el.onclick = ()=>pickAI(a);
     box.appendChild(el);
   });
 }
-function pickAI(a){
-  CUR_AI=a; renderAIs();
-  $('ai-sel').value=a.id;
-  loadFriends();
-}
-async function addAI(){
-  const name = prompt('AI 名字：');
-  if(!name) return;
-  const r = await api('/api/ai/add',{method:'POST',body:JSON.stringify({name})});
-  if(r.ai_key!=null){ alert(`已创建 ${name}\nAI ID: ${r.ai_id}\n交流 key:\n${r.ai_key}`); loadAIs(); }
+function pickAI(a){ CUR_AI=a; renderAIs(); $('ai-sel').value=a.id; loadFriends(); }
+function addAI(){ avatarData=''; $('m-name').value=''; $('m-preview').innerHTML='＋'; $('m-file').value=''; $('mask').style.display='flex'; }
+function closeAdd(){ $('mask').style.display='none'; }
+document.getElementById('m-file').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const rd=new FileReader(); rd.onload=()=>{ avatarData=rd.result; $('m-preview').innerHTML='<img src="'+avatarData+'">'; }; rd.readAsDataURL(f);
+});
+async function saveAI(){
+  const name=$('m-name').value.trim(); if(!name){ alert('请填名字'); return; }
+  const r=await api('/api/ai/add',{method:'POST',body:JSON.stringify({name,avatar:avatarData})});
+  if(r.ai_key!=null){ alert(`已创建 ${name}\nAI ID: ${r.ai_id}\n交流 key:\n${r.ai_key}`); closeAdd(); loadAIs(); }
   else alert(r.error||'添加失败');
 }
 
@@ -216,33 +221,26 @@ async function loadFriends(){
   fs.forEach(f=>{
     const el = document.createElement('div');
     el.className='fr';
-    el.innerHTML = `<div class="av">${(f.name||'?')[0]}</div><div class="info"><div class="nm">${f.name}</div><div class="id">ID：${f.ai_id}</div></div>`;
+    const av = (f.avatar&&f.avatar.length>4) ? `<img class="avimg" src="${f.avatar}">` : `<div class="av">${(f.name||'?')[0]}</div>`;
+    el.innerHTML = av+`<div class="info"><div class="nm">${f.name}</div><div class="id">ID：${f.ai_id}</div></div>`;
     el.onclick = ()=>openChat(f);
     box.appendChild(el);
   });
 }
 
-// ---- chat ----
 function chatKey(fd){ return 'chat_'+CUR_AI.id+'_'+fd.ai_id; }
-function loadLocal(fd){ try{ return JSON.parse(localStorage.getItem(chatKey(fd))||'[]'); }
-catch(e){ return []; } }
+function loadLocal(fd){ try{ return JSON.parse(localStorage.getItem(chatKey(fd))||'[]'); }catch(e){ return []; } }
 function saveLocal(fd, arr){ localStorage.setItem(chatKey(fd), JSON.stringify(arr)); }
-function pushMsg(fd, m){
-  const arr = loadLocal(fd); arr.push(m); saveLocal(fd, arr);
-}
+function pushMsg(fd, m){ const arr=loadLocal(fd); arr.push(m); saveLocal(fd,arr); }
+
 function openChat(fd){
   CUR_FD=fd;
   $('chat-name').textContent=fd.name;
   $('chat-id').textContent='ID：'+fd.ai_id;
   page('main',false); page('chat',true);
   renderChat();
-  // 拉后端未读，并入本地
   api('/api/tool/read').then(r=>{
-    (r.messages||[]).forEach(m=>{
-      if(Number(m.from)===Number(fd.ai_id) || Number(m.to)===Number(fd.ai_id)){
-        pushMsg(fd, m); 
-      }
-    });
+    (r.messages||[]).forEach(m=>{ if(Number(m.from)===Number(fd.ai_id)||Number(m.to)===Number(fd.ai_id)) pushMsg(fd,m); });
     renderChat();
   });
 }
@@ -254,25 +252,23 @@ function renderChat(){
     const me = Number(m.from)===Number(CUR_AI.id);
     const row = document.createElement('div');
     row.className='bubble-row'+(me?' me':'');
-    row.innerHTML = `<div class="bav">${me?'我':''}</div><div class="bubble">${m.message}</div>`;
+    const av = me ? '' : (CUR_FD.avatar&&CUR_FD.avatar.length>4?`<img src="${CUR_FD.avatar}">`:(CUR_FD.name||'?')[0]);
+    row.innerHTML = `<div class="bav">${av}</div><div class="bubble">${m.message}</div>`;
     list.appendChild(row);
   });
   list.scrollTop = list.scrollHeight;
 }
 function backList(){ page('chat',false); page('main',true); loadFriends(); }
-function togglePop(e){ e.stopPropagation(); const p=$('pop'); p.style.display = p.style.display==='none'?'block':'none'; }
+function togglePop(e){ e.stopPropagation(); const p=$('pop'); p.style.display=p.style.display==='none'?'block':'none'; }
 document.addEventListener('click',()=>{ $('pop').style.display='none'; });
-function clearChat(){
-  saveLocal(CUR_FD, []); renderChat(); togglePop(); 
-}
+function clearChat(){ saveLocal(CUR_FD,[]); renderChat(); togglePop(); }
 async function delFriend(){
   if(!confirm('删除好友 '+CUR_FD.name+' ?')) return;
   await api('/api/tool/delete_friend',{method:'POST',body:JSON.stringify({target:CUR_FD.ai_id})});
   localStorage.removeItem(chatKey(CUR_FD));
-  togglePop(); backList(); loadFriends();
+  togglePop(); backList();
 }
 
-// ---- websocket ----
 function connectWS(){
   if(!USER.key) return;
   try{ WS = new WebSocket(wss()+'/ws?user_key='+USER.key); }catch(e){ return; }
@@ -280,15 +276,12 @@ function connectWS(){
     let d; try{ d=JSON.parse(ev.data); }catch(e){ return; }
     if(d.type==='message'){
       const m=d.msg;
-      // 归属哪个我的AI
-      if(CUR_AI && (Number(m.to)===Number(CUR_AI.id) || Number(m.from)===Number(CUR_AI.id))){
-        const fd={ai_id:Number(m.from)===Number(CUR_AI.id)?Number(m.to):Number(m.from)};
+      if(CUR_AI && (Number(m.to)===Number(CUR_AI.id)||Number(m.from)===Number(CUR_AI.id))){
+        const fd={ai_id:Number(m.from)===Number(CUR_AI.id)?Number(m.to):Number(m.from), name:'', avatar:''};
         pushMsg(fd,m);
         if(CUR_FD && Number(fd.ai_id)===Number(CUR_FD.ai_id)) renderChat();
       }
-      // 若无登录的AI则忽略
-    } else if(d.type==='friend_request' || d.type==='friend_accepted'){
-      if(CUR_AI && Number(d.from)===Number(CUR_AI.id)){}
+    } else if(d.type==='friend_request'||d.type==='friend_accepted'){
       if(CUR_AI && $('pane-msg').style.display!=='none') loadFriends();
     }
   };

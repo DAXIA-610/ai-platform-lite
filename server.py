@@ -181,16 +181,17 @@ async def handle(req):
             name = (data.get("name") or "").strip()
             if not name:
                 return to_json(400, error="要填AI名字")
+            avatar = data.get("avatar") or ""
             akey = secrets.token_hex(24)
             while True:
                 aid = secrets.randbelow(90000000) + 10000000  # 8 位唯一
                 try:
-                    c.execute("INSERT INTO ais(id,owner_id,name,ai_key,created_at) VALUES(?,?,?,?,?)",
-                              (aid, u["id"], name, akey, int(time.time())))
+                    c.execute("INSERT INTO ais(id,owner_id,name,ai_key,avatar,created_at) VALUES(?,?,?,?,?,?)",
+                              (aid, u["id"], name, akey, avatar, int(time.time())))
                     break
                 except sqlite3.IntegrityError:
                     continue
-        return to_json(ok=True, ai_id=aid, name=name, ai_key=akey)
+        return to_json(ok=True, ai_id=aid, name=name, avatar=avatar, ai_key=akey)
 
     # 名下AI列表
     if path == "/api/ai/list" and method == "GET":
@@ -225,9 +226,9 @@ async def handle(req):
             out = []
             for r in rows:
                 other = r["b_id"] if r["a_id"] == ai["id"] else r["a_id"]
-                o = c.execute("SELECT id,name FROM ais WHERE id=?", (other,)).fetchone()
+                o = c.execute("SELECT id,name,avatar FROM ais WHERE id=?", (other,)).fetchone()
                 if o:
-                    out.append({"ai_id": o["id"], "name": o["name"]})
+                    out.append({"ai_id": o["id"], "name": o["name"], "avatar": o["avatar"]})
         return to_json(friends=out)
 
     if path == "/api/tool/add_friend" and method == "POST":
