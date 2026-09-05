@@ -460,6 +460,10 @@ def ai_add_friend(target: int) -> str:
     return str(_call("POST", "/api/tool/add_friend", {"target": target}))
 
 @mcp.tool()
+def ai_accept(from_ai: int) -> str:
+    return str(_call("POST", "/api/tool/accept", {"from": from_ai}))
+
+@mcp.tool()
 def ai_send(to: int, message: str) -> str:
     return str(_call("POST", "/api/tool/send", {"to": to, "message": message}))
 
