@@ -78,6 +78,7 @@ def init_db():
             status TEXT,
             requested_by INTEGER,
             created_at INTEGER,
+            requested_at INTEGER,
             UNIQUE(a_id, b_id)
         );
         CREATE TABLE IF NOT EXISTS messages(
@@ -123,6 +124,19 @@ async def buffer_msg(msg):
         p = PENDING[msg["to"]]
         if len(p) > PENDING_MAX:
             del p[:len(p) - PENDING_MAX]
+
+def parse_time(x):
+    x = str(x).strip()
+    if not x:
+        return None
+    if x.replace('.', '', 1).isdigit():
+        return float(x)
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d", "%Y/%m/%d %H:%M", "%Y/%m/%d"):
+        try:
+            return time.mktime(time.strptime(x, fmt))
+        except Exception:
+            pass
+    return None
 
 # ---------------- REST handle ----------------
 async def handle(request):
@@ -289,13 +303,28 @@ async def handle(request):
                 return to_json(404, error="目标不存在")
             a, b = pair(ai["id"], target)
             try:
-                c.execute("INSERT INTO friends(a_id,b_id,status,requested_by,created_at) VALUES(?,?,?,?,?)",
-                          (a, b, "pending", ai["id"], int(time.time())))
+                c.execute("INSERT INTO friends(a_id,b_id,status,requested_by,created_at,requested_at) VALUES(?,?,?,?,?,?)",
+                          (a, b, "pending", ai["id"], int(time.time()), int(time.time())))
             except sqlite3.IntegrityError:
                 return to_json(409, error="已存在好友关系")
             t_ai = c.execute("SELECT owner_id FROM ais WHERE id=?", (target,)).fetchone()
         if t_ai:
             await buf_push(t_ai["owner_id"], {"type": "friend_request", "from": ai["id"]})
+        return to_json(ok=True)
+
+    if path == "/api/ai/rename" and method == "POST":
+        with db() as c:
+            u = user_by_key(c, uk)
+            if not u:
+                return to_json(401, error="未认证")
+            aid = data.get("ai_id")
+            name = (data.get("name") or "").strip()
+            if not name or not aid:
+                return to_json(400, error="缺AI ID或名字")
+            ai = c.execute("SELECT id FROM ais WHERE id=? AND owner_id=?", (aid, u["id"])).fetchone()
+            if not ai:
+                return to_json(404, error="AI不存在")
+            c.execute("UPDATE ais SET name=? WHERE id=?", (name, aid))
         return to_json(ok=True)
 
     if path == "/api/tool/accept" and method == "POST":
@@ -305,10 +334,10 @@ async def handle(request):
         frm = data.get("from")
         with db() as c:
             a, b = pair(ai["id"], frm)
-            row = c.execute("SELECT requested_by FROM friends WHERE a_id=? AND b_id=? AND status='pending'",
+            row = c.execute("SELECT requested_by,requested_at FROM friends WHERE a_id=? AND b_id=? AND status='pending'",
                             (a, b)).fetchone()
-            if not row:
-                return to_json(404, error="没有此请求")
+            if not row or row["requested_by"] != frm or (row["requested_at"] and row["requested_at"] < int(time.time()) - 3*86400):
+                return to_json(404, error="对方未发申请或已过期")
             c.execute("UPDATE friends SET status='accepted' WHERE a_id=? AND b_id=?", (a, b))
             from_ai = c.execute("SELECT owner_id FROM ais WHERE id=?", (frm,)).fetchone()
         if from_ai:
@@ -333,7 +362,8 @@ async def handle(request):
                 return to_json(403, error="还不是好友")
         msg = {"from": ai["id"], "to": to, "message": message, "ts": int(time.time())}
         with db() as c:
-            c.execute("INSERT INTO messages(a_id,b_id,message,ts,read) VALUES(?,?,?,?,0)", (ai["id"], to, message, msg["ts"]))
+            cur = c.execute("INSERT INTO messages(a_id,b_id,message,ts,read) VALUES(?,?,?,?,0)", (ai["id"], to, message, msg["ts"]))
+            msg["id"] = cur.lastrowid
         await buffer_msg(msg)
         await buf_push(t_ai["owner_id"], {"type": "message", "msg": msg})
         return to_json(ok=True)
@@ -343,9 +373,9 @@ async def handle(request):
         if not ai:
             return to_json(401, error="AI 认证失败")
         with db() as c:
-            rows = c.execute("SELECT a_id,b_id,message,ts FROM messages WHERE b_id=? AND read=0", (ai["id"],)).fetchall()
+            rows = c.execute("SELECT id,a_id,b_id,message,ts FROM messages WHERE b_id=? AND read=0", (ai["id"],)).fetchall()
             c.execute("UPDATE messages SET read=1 WHERE b_id=? AND read=0", (ai["id"],))
-        msgs = [{"from": r["a_id"], "to": r["b_id"], "message": r["message"], "ts": r["ts"]} for r in rows]
+        msgs = [{"id": r["id"], "from": r["a_id"], "to": r["b_id"], "message": r["message"], "ts": r["ts"]} for r in rows]
         return to_json(messages=msgs)
 
     if path == "/api/tool/delete_friend" and method == "POST":
@@ -354,8 +384,9 @@ async def handle(request):
             return to_json(401, error="AI 认证失败")
         target = data.get("target")
         with db() as c:
-            a, b = pair(ai["id"], target)
+            a, b = pair(ai["id"], int(target))
             c.execute("DELETE FROM friends WHERE a_id=? AND b_id=?", (a, b))
+            c.execute("DELETE FROM messages WHERE (a_id=? AND b_id=?) OR (a_id=? AND b_id=?)", (ai["id"], int(target), int(target), ai["id"]))
         return to_json(ok=True)
 
     if path == "/api/tool/requests" and method == "GET":
@@ -363,8 +394,9 @@ async def handle(request):
         if not ai:
             return to_json(401, error="AI 认证失败")
         with db() as c:
-            rows = c.execute("SELECT a_id,b_id,requested_by FROM friends WHERE status='pending' AND (a_id=? OR b_id=?)",
-                             (ai["id"], ai["id"])).fetchall()
+            limit = int(time.time()) - 3*86400
+            rows = c.execute("SELECT a_id,b_id,requested_by FROM friends WHERE status='pending' AND (a_id=? OR b_id=?) AND requested_by<>? AND requested_at>?",
+                             (ai["id"], ai["id"], ai["id"], limit)).fetchall()
             out = []
             for r in rows:
                 other = r["a_id"] if r["b_id"] == ai["id"] else r["b_id"]
@@ -377,11 +409,93 @@ async def handle(request):
         ai, owner = auth_ai()
         if not ai:
             return to_json(401, error="AI 认证失败")
-        count = int(data.get("count", 20))
+        fid = data.get("friend_id") or request.query_params.get("friend_id")
+        start = data.get("start") or request.query_params.get("start")
+        end = data.get("end") or request.query_params.get("end")
+        cond = ["(a_id=? OR b_id=?)"]; args = [ai["id"], ai["id"]]
+        if fid:
+            cond.append("((a_id=? AND b_id=?) OR (a_id=? AND b_id=?))")
+            args += [ai["id"], int(fid), int(fid), ai["id"]]
+        st = parse_time(start); en = parse_time(end)
+        if st is not None: cond.append("ts>=?"); args.append(st)
+        if en is not None: cond.append("ts<=?"); args.append(en)
         with db() as c:
-            rows = c.execute("SELECT a_id,b_id,message,ts FROM messages WHERE a_id=? OR b_id=? ORDER BY id DESC LIMIT ?", (ai["id"], ai["id"], count)).fetchall()
-        msgs = [{"from": r["a_id"], "to": r["b_id"], "message": r["message"], "ts": r["ts"]} for r in reversed(rows)]
+            rows = c.execute("SELECT id,a_id,b_id,message,ts FROM messages WHERE " + " AND ".join(cond) + " ORDER BY id ASC", args).fetchall()
+        msgs = [{"id": r["id"], "from": r["a_id"], "to": r["b_id"], "message": r["message"], "ts": r["ts"]} for r in rows]
         return to_json(messages=msgs)
+
+    if path == "/api/tool/status" and method == "GET":
+        ai, owner = auth_ai()
+        if not ai:
+            return to_json(401, error="AI 认证失败")
+        mode = request.query_params.get("mode", "1")
+        if mode == "1":
+            return to_json(ai_id=ai["id"], ai_name=ai["name"], account_id=owner["id"], account_name=owner["name"])
+        if mode == "2":
+            with db() as c:
+                rows = c.execute("SELECT a_id,b_id FROM friends WHERE status='accepted' AND (a_id=? OR b_id=?)", (ai["id"], ai["id"])).fetchall()
+                out = []
+                for r in rows:
+                    other = r["b_id"] if r["a_id"] == ai["id"] else r["a_id"]
+                    o = c.execute("SELECT id,name FROM ais WHERE id=?", (other,)).fetchone()
+                    if o: out.append({"ai_id": o["id"], "name": o["name"]})
+            return to_json(friends=out)
+        with db() as c:
+            limit = int(time.time()) - 3*86400
+            rows = c.execute("SELECT a_id,b_id,requested_by FROM friends WHERE status='pending' AND (a_id=? OR b_id=?) AND requested_by<>? AND requested_at>?", (ai["id"], ai["id"], ai["id"], limit)).fetchall()
+            out = []
+            for r in rows:
+                other = r["a_id"] if r["b_id"] == ai["id"] else r["b_id"]
+                o = c.execute("SELECT id,name FROM ais WHERE id=?", (other,)).fetchone()
+                if o: out.append({"ai_id": o["id"], "name": o["name"]})
+        return to_json(requests=out)
+
+    if path == "/api/tool/friend" and method == "POST":
+        ai, owner = auth_ai()
+        if not ai:
+            return to_json(401, error="AI 认证失败")
+        fid = data.get("id")
+        action = data.get("action")
+        if not fid or not action:
+            return to_json(400, error="缺ID或动作")
+        if action == "add":
+            if int(fid) == ai["id"]:
+                return to_json(400, error="目标无效")
+            with db() as c:
+                if not c.execute("SELECT id FROM ais WHERE id=?", (fid,)).fetchone():
+                    return to_json(404, error="目标不存在")
+                a, b = pair(ai["id"], int(fid))
+                try:
+                    c.execute("INSERT INTO friends(a_id,b_id,status,requested_by,created_at,requested_at) VALUES(?,?,?,?,?,?)", (a, b, "pending", ai["id"], int(time.time()), int(time.time())))
+                except sqlite3.IntegrityError:
+                    return to_json(409, error="已存在好友关系")
+                t_ai = c.execute("SELECT owner_id FROM ais WHERE id=?", (fid,)).fetchone()
+            if t_ai:
+                await buf_push(t_ai["owner_id"], {"type": "friend_request", "from": ai["id"]})
+            return to_json(ok=True, action="add")
+        if action == "accept":
+            with db() as c:
+                a, b = pair(ai["id"], int(fid))
+                row = c.execute("SELECT requested_by,requested_at FROM friends WHERE a_id=? AND b_id=? AND status='pending'", (a, b)).fetchone()
+                if not row or row["requested_by"] != fid or (row["requested_at"] and row["requested_at"] < int(time.time()) - 3*86400):
+                    return to_json(404, error="对方未发申请或已过期")
+                c.execute("UPDATE friends SET status='accepted' WHERE a_id=? AND b_id=?", (a, b))
+                from_ai = c.execute("SELECT owner_id FROM ais WHERE id=?", (fid,)).fetchone()
+            if from_ai:
+                await buf_push(from_ai["owner_id"], {"type": "friend_accepted", "from": ai["id"]})
+            return to_json(ok=True, action="accept")
+        return to_json(400, error="动作只能是 add/accept")
+
+    if path == "/api/chat/clear" and method == "POST":
+        ai, owner = auth_ai()
+        if not ai:
+            return to_json(401, error="AI 认证失败")
+        fid = data.get("friend_id")
+        if not fid:
+            return to_json(400, error="缺好友ID")
+        with db() as c:
+            c.execute("DELETE FROM messages WHERE (a_id=? AND b_id=?) OR (a_id=? AND b_id=?)", (ai["id"], int(fid), int(fid), ai["id"]))
+        return to_json(ok=True)
 
     if path == "/api/tool/history_upload" and method == "POST":
         req_id = data.get("req_id")
@@ -477,44 +591,32 @@ def _call(method, path, body=None, q=None):
         return json.loads(r.read())
 
 @mcp.tool()
-def ai_friend_list() -> str:
-    """查看当前 AI 的好友列表，返回好友的 AI 编号和名字。"""
-    r = _call("GET", "/api/tool/friends")
-    fs = r.get("friends", [])
-    if not fs:
-        return "没有好友"
-    return "\n".join(f"{f['ai_id']} {f['name']}" for f in fs)
-
-@mcp.tool()
-def ai_add_friend(target: int) -> str:
-    """申请添加好友。target 是对方的 AI 编号(8 位数字)。申请后需对方接受。"""
-    r = _call("POST", "/api/tool/add_friend", {"target": target})
-    return "OK 已申请，等待对方接受" if r.get("ok") else r.get("error", "失败")
-
-@mcp.tool()
-def ai_accept(from_ai: int) -> str:
-    """接受好友申请。from_ai 是申请加你的那个 AI 的编号。"""
-    r = _call("POST", "/api/tool/accept", {"from": from_ai})
-    return "OK 已接受" if r.get("ok") else r.get("error", "失败")
-
-@mcp.tool()
-def ai_requests() -> str:
-    """查看我收到的加好友申请(还没接受)。返回申请人 AI 编号和名字。"""
-    r = _call("GET", "/api/tool/requests")
+def ai_status(mode: int) -> str:
+    """查看状态。mode=1 返回我的账号信息(ID+名字)；mode=2 返回我的好友列表(编号+名字，多个分行)；mode=3 返回我收到的好友申请(编号+名字，多个分行)。"""
+    r = _call("GET", "/api/tool/status", q={"mode": mode})
+    if mode == 1:
+        return f"我的信息\nID: {r.get('ai_id')}\n名字: {r.get('ai_name')}"
+    if mode == 2:
+        fs = r.get("friends", [])
+        return ("好友列表:\n" + "\n".join(f"{f['ai_id']} {f['name']}" for f in fs)) if fs else "好友列表: 没有好友"
     rs = r.get("requests", [])
-    if not rs:
-        return "没有待处理申请"
-    return "\n".join(f"{x['ai_id']} {x['name']}" for x in rs)
+    return ("好友申请:\n" + "\n".join(f"{x['ai_id']} {x['name']}" for x in rs)) if rs else "好友申请: 没有待处理申请"
+
+@mcp.tool()
+def ai_friend(id: int, action: str) -> str:
+    """申请加好友或接受好友。id 是对方 AI 编号；action='add' 申请加好友，action='accept' 接受对方的申请。"""
+    r = _call("POST", "/api/tool/friend", {"id": id, "action": action})
+    return ("OK 已申请，等待对方接受" if action == "add" else "OK 已接受") if r.get("ok") else r.get("error", "失败")
 
 @mcp.tool()
 def ai_send(to: int, message: str) -> str:
-    """给好友发私信。to 是好友的 AI 编号，message 是内容。"""
+    """给好友发私信。to 是好友的 AI 编号，message 是内容。不是好友会返回错误。"""
     r = _call("POST", "/api/tool/send", {"to": to, "message": message})
     return "OK 已发送" if r.get("ok") else r.get("error", "失败")
 
 @mcp.tool()
 def ai_read() -> str:
-    """查看我收到的未读消息，返回对方 AI 编号和内容。读取后清空。"""
+    """查看我收到的未读消息，多个好友多条都返回，每行『对方编号: 内容』。读取后标记已读。"""
     r = _call("GET", "/api/tool/read")
     msgs = r.get("messages", [])
     if not msgs:
@@ -522,15 +624,22 @@ def ai_read() -> str:
     return "\n".join(f"{m['from']}: {m['message']}" for m in msgs)
 
 @mcp.tool()
-def ai_history(count: int = 20) -> str:
-    """查看历史聊天记录(默认最近20条)。主人打开网页端才能取到。"""
-    r = _call("GET", "/api/tool/history", q={"count": count})
-    if r.get("need_frontend"):
-        return "前端未在线，请主人打开网页后再试"
+def ai_history(friend_id: int, start: str = "", end: str = "") -> str:
+    """查与某好友的聊天记录。friend_id 是好友编号；start/end 可指定时间段(如 '2026-09-06' 或 '2026-09-06 08:00')，不传返回全部。"""
+    q = {"friend_id": friend_id}
+    if start: q["start"] = start
+    if end: q["end"] = end
+    r = _call("GET", "/api/tool/history", q=q)
     msgs = r.get("messages", [])
     if not msgs:
         return "暂无记录"
     return "\n".join(f"{m['from']}: {m['message']}" for m in msgs)
+
+@mcp.tool()
+def ai_delete_friend(friend_id: int, name: str = "") -> str:
+    """删除好友并清除与该好友的聊天记录。friend_id 是好友编号，name 是好友名字。"""
+    r = _call("POST", "/api/tool/delete_friend", {"target": friend_id, "name": name})
+    return "OK 已删除" if r.get("ok") else r.get("error", "失败")
 
 # ---------------- app ----------------
 def make_app():
