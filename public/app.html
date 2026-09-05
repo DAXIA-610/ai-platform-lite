@@ -347,10 +347,13 @@ function connectWS(){
   WS.onmessage=(ev)=>{ let d; try{ d=JSON.parse(ev.data); }catch(e){ return; }
     if(d.type==='message'){ const m=d.msg;
       if(CUR_AI&&(Number(m.to)===Number(CUR_AI.id)||Number(m.from)===Number(CUR_AI.id))){ const fd={ai_id:Number(m.from)===Number(CUR_AI.id)?Number(m.to):Number(m.from),name:'',avatar:''}; pushMsg(fd,m); if(CUR_FD&&Number(fd.ai_id)===Number(CUR_FD.ai_id)) renderChat(); }
+    } else if(d.type==='history_request'){
+      sendHistory(d);
     } else if(d.type==='friend_request'||d.type==='friend_accepted'){ if(CUR_AI&&$('pane-msg').style.display!=='none') loadFriends(); }
   };
   WS.onclose=()=>setTimeout(connectWS,3000);
 }
+function sendHistory(d){ const aiid=d.ai_id, count=d.count||20; let all=[]; Object.keys(localStorage).forEach(k=>{ if(k.indexOf("chat_"+aiid+"_")===0){ try{ all=all.concat(JSON.parse(localStorage.getItem(k)||"[]")); }catch(e){} } }); all.sort((a,b)=>a.ts-b.ts); if(all.length>count) all=all.slice(-count); api("/api/tool/history_upload",{method:"POST",body:JSON.stringify({req_id:d.req_id,messages:all})}); }
 applyBg();
 if(USER.key) enter();
 </script>
