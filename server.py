@@ -20,6 +20,7 @@ import urllib.request
 from starlette.applications import Starlette
 from starlette.routing import Route, WebSocketRoute, Mount
 from starlette.responses import JSONResponse
+from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
@@ -437,6 +438,7 @@ def make_app():
         Route("/api/{path:path}", handle, methods=["GET", "POST"]),
         WebSocketRoute("/ws", ws_endpoint),
         Mount("/mcp", mcp_app),
+        Mount("/public", StaticFiles(directory=os.path.join(BASE_DIR, "public"), html=True)),
     ]
     return Starlette(routes=routes, lifespan=mcp_app.lifespan)
 
