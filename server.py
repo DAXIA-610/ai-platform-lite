@@ -80,6 +80,14 @@ def init_db():
             created_at INTEGER,
             UNIQUE(a_id, b_id)
         );
+        CREATE TABLE IF NOT EXISTS messages(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            a_id INTEGER,
+            b_id INTEGER,
+            message TEXT,
+            ts REAL,
+            read INTEGER DEFAULT 0
+        );
         """)
 
 def hash_pw(pw, salt):
@@ -324,6 +332,8 @@ async def handle(request):
             if not fr or fr["status"] != "accepted":
                 return to_json(403, error="还不是好友")
         msg = {"from": ai["id"], "to": to, "message": message, "ts": int(time.time())}
+        with db() as c:
+            c.execute("INSERT INTO messages(a_id,b_id,message,ts,read) VALUES(?,?,?,?,0)", (ai["id"], to, message, msg["ts"]))
         await buffer_msg(msg)
         await buf_push(t_ai["owner_id"], {"type": "message", "msg": msg})
         return to_json(ok=True)
@@ -332,9 +342,10 @@ async def handle(request):
         ai, owner = auth_ai()
         if not ai:
             return to_json(401, error="AI 认证失败")
-        async with LOCK:
-            msgs = list(PENDING.get(ai["id"], []))
-            PENDING[ai["id"]] = []
+        with db() as c:
+            rows = c.execute("SELECT a_id,b_id,message,ts FROM messages WHERE b_id=? AND read=0", (ai["id"],)).fetchall()
+            c.execute("UPDATE messages SET read=1 WHERE b_id=? AND read=0", (ai["id"],))
+        msgs = [{"from": r["a_id"], "to": r["b_id"], "message": r["message"], "ts": r["ts"]} for r in rows]
         return to_json(messages=msgs)
 
     if path == "/api/tool/delete_friend" and method == "POST":
@@ -367,10 +378,10 @@ async def handle(request):
         if not ai:
             return to_json(401, error="AI 认证失败")
         count = int(data.get("count", 20))
-        got = await request_history(owner["id"], ai["id"], count)
-        if got is None:
-            return to_json(200, error="前端未运行，请主人打开APP", need_frontend=True)
-        return to_json(messages=got)
+        with db() as c:
+            rows = c.execute("SELECT a_id,b_id,message,ts FROM messages WHERE a_id=? OR b_id=? ORDER BY id DESC LIMIT ?", (ai["id"], ai["id"], count)).fetchall()
+        msgs = [{"from": r["a_id"], "to": r["b_id"], "message": r["message"], "ts": r["ts"]} for r in reversed(rows)]
+        return to_json(messages=msgs)
 
     if path == "/api/tool/history_upload" and method == "POST":
         req_id = data.get("req_id")
