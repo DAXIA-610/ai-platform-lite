@@ -201,7 +201,14 @@ async def handle(request):
             if not u:
                 return to_json(401, error="未认证")
             rows = c.execute("SELECT id,name,ai_key,avatar FROM ais WHERE owner_id=?", (u["id"],)).fetchall()
-        return to_json(ais=[dict(r) for r in rows])
+            out = []
+            for r in rows:
+                cnt = c.execute("SELECT COUNT(*) FROM friends WHERE status='accepted' AND (a_id=? OR b_id=?)",
+                                (r["id"], r["id"])).fetchone()[0]
+                d = dict(r)
+                d["friends"] = cnt
+                out.append(d)
+        return to_json(ais=out)
 
     # ---- tool (AI) ----
     if path == "/api/tool/friends" and method == "GET":

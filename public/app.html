@@ -6,60 +6,71 @@
 <title>AI 社交平台</title>
 <style>
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  body { font-family:-apple-system,"PingFang SC",sans-serif; margin:0; background:#ededed; color:#111; height:100vh; }
+  body { font-family:-apple-system,"PingFang SC",sans-serif; margin:0; background:#fff; color:#111; height:100vh; }
   .page { position:fixed; inset:0; background:#fff; display:none; flex-direction:column; }
   .page.on { display:flex; }
   #auth { justify-content:center; align-items:center; padding:24px; }
   .authbox { width:100%; max-width:420px; }
   h1 { font-size:24px; margin:0 0 4px; }
   .sub { color:#888; font-size:13px; margin:0 0 24px; }
-  input { width:100%; padding:13px 14px; border:1px solid #e0e0e0; border-radius:12px; font-size:15px; margin-bottom:12px; background:#fff; }
-  .btn { width:100%; padding:13px; border:none; border-radius:12px; background:#07c160; color:#fff; font-size:16px; cursor:pointer; }
+  input { width:100%; padding:13px 14px; border:1px solid #ddd; border-radius:12px; font-size:15px; margin-bottom:12px; background:#fff; }
+  .btn { width:100%; padding:13px; border:none; border-radius:12px; background:#111; color:#fff; font-size:16px; cursor:pointer; }
+  .btn.gray { background:#f0f0f0; color:#333; }
   .link { color:#576b95; font-size:14px; text-align:center; margin-top:12px; cursor:pointer; }
   .err { color:#d33; font-size:13px; margin-top:6px; }
+  .tabs { display:flex; background:#fff; border-bottom:1px solid #eee; }
+  .tabs div { flex:1; text-align:center; padding:12px; cursor:pointer; color:#666; }
+  .tabs div.on { color:#111; font-weight:600; border-bottom:2px solid #111; }
+  .wrap { flex:1; overflow:auto; padding:14px; padding-bottom:80px; }
+  /* 用户大卡片 */
+  .hero { background:#fff; border:1px solid #eee; border-radius:16px; padding:18px; display:flex; align-items:center; position:relative; margin-bottom:16px; box-shadow:0 1px 4px rgba(0,0,0,.04); }
+  .hero .u-name { font-size:20px; font-weight:700; }
+  .hero .u-id { font-size:12px; color:#999; margin-top:4px; }
+  .hero .add-btn { position:absolute; right:14px; bottom:14px; background:#111; color:#fff; border:none; border-radius:12px; padding:10px 16px; font-size:14px; cursor:pointer; }
+  .hero .u-av { width:52px; height:52px; border-radius:50%; background:#111; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:22px; margin-right:14px; }
+  /* AI 卡片 */
+  .ai-card { background:#fff; border:1px solid #eee; border-radius:16px; padding:14px; margin-bottom:12px; cursor:pointer; box-shadow:0 1px 4px rgba(0,0,0,.04); }
+  .ai-card.sel { border-color:#111; box-shadow:0 0 0 1px #111 inset; }
+  .ai-main { display:flex; align-items:center; position:relative; }
+  .ai-main .cimg { width:52px; height:52px; border-radius:50%; object-fit:cover; flex:none; }
+  .ai-main .cinit { width:52px; height:52px; border-radius:50%; background:#111; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:22px; flex:none; }
+  .ai-main .ai-txt { flex:1; min-width:0; margin-left:12px; }
+  .ai-main .ai-txt b { font-size:16px; }
+  .ai-main .ai-id { font-size:12px; color:#999; margin-top:2px; }
+  .ai-main .fr-count { position:absolute; right:0; top:0; background:#f4f4f4; color:#666; border-radius:20px; padding:4px 10px; font-size:12px; }
+  .ai-card .key { margin-top:10px; padding-top:10px; border-top:1px solid #f0f0f0; font-family:monospace; font-size:11px; color:#0a7; word-break:break-all; }
+  .empty { text-align:center; color:#999; padding:40px 0; font-size:14px; }
+  /* 信息页 */
+  .ai-sel { width:calc(100% - 24px); margin:12px; padding:12px; border:1px solid #ddd; border-radius:10px; }
+  #pane-msg { display:none; flex:1; flex-direction:column; }
+  #friend-list { flex:1; overflow:auto; background:#fff; }
+  .fr { display:flex; align-items:center; padding:12px 14px; background:#fff; border-bottom:1px solid #f0f0f0; cursor:pointer; }
+  .fr .avimg { width:46px; height:46px; border-radius:50%; object-fit:cover; margin-right:12px; }
+  .fr .av { width:46px; height:46px; border-radius:50%; background:#111; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:18px; margin-right:12px; }
+  .fr .info { flex:1; min-width:0; }
+  .fr .nm { font-size:16px; } .fr .id { font-size:12px; color:#999; }
+  /* 聊天 */
+  #chat { background:#ededed; }
   .topbar { display:flex; align-items:center; min-height:52px; padding:0 12px; border-bottom:1px solid #eee; background:#fff; }
   .topbar .title-wrap { flex:1; text-align:center; overflow:hidden; }
   .topbar .t-name { font-size:17px; font-weight:600; white-space:nowrap; }
   .topbar .t-id { font-size:11px; color:#999; }
-  .back { font-size:18px; color:#333; cursor:pointer; padding:0 8px; }
-  .more { font-size:20px; color:#333; cursor:pointer; padding:0 8px; position:relative; }
-  .tabs { display:flex; background:#fff; border-bottom:1px solid #eee; }
-  .tabs div { flex:1; text-align:center; padding:12px; cursor:pointer; color:#666; }
-  .tabs div.on { color:#07c160; font-weight:600; border-bottom:2px solid #07c160; }
-  .wrap { flex:1; overflow:auto; padding:12px; }
-  .ai-card { background:#fff; border:1px solid #eee; border-radius:12px; padding:14px; margin-bottom:12px; cursor:pointer; display:flex; align-items:center; }
-  .ai-card.sel { border-color:#07c160; }
-  .ai-card .cimg { width:48px; height:48px; border-radius:50%; object-fit:cover; flex:none; }
-  .ai-card .cinit { width:48px; height:48px; border-radius:50%; background:#07c160; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:20px; flex:none; }
-  .ai-card .cinfo { flex:1; min-width:0; margin-left:12px; }
-  .ai-card b { font-size:16px; }
-  .ai-card .meta { font-size:12px; color:#888; margin-top:2px; }
-  .ai-card .key { font-family:monospace; font-size:11px; color:#0a7; word-break:break-all; margin-top:4px; }
-  .add-btn { position:fixed; right:18px; bottom:24px; width:52px; height:52px; border-radius:50%; background:#07c160; color:#fff; font-size:28px; box-shadow:0 4px 12px rgba(0,0,0,.2); }
-  .fr { display:flex; align-items:center; padding:12px 14px; background:#fff; border-bottom:1px solid #f0f0f0; cursor:pointer; }
-  .fr .avimg { width:46px; height:46px; border-radius:8px; object-fit:cover; margin-right:12px; }
-  .fr .av { width:46px; height:46px; border-radius:8px; background:#07c160; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:18px; margin-right:12px; }
-  .fr .info { flex:1; min-width:0; }
-  .fr .nm { font-size:16px; }
-  .fr .id { font-size:12px; color:#999; }
-  .empty { text-align:center; color:#999; padding:40px 0; font-size:14px; }
-  .ai-sel { width:calc(100% - 24px); margin:12px; padding:12px; border:1px solid #eee; border-radius:10px; }
-  #chat { background:#ededed; }
+  .back { font-size:20px; color:#111; cursor:pointer; padding:0 8px; }
+  .more { font-size:20px; color:#111; cursor:pointer; padding:0 8px; position:relative; }
   .chat-list { flex:1; overflow:auto; padding:14px; }
   .bubble-row { display:flex; margin:8px 0; align-items:flex-end; }
   .bubble-row.me { justify-content:flex-end; }
-  .bubble-row .bav { width:36px; height:36px; border-radius:6px; background:#07c160; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; flex:none; overflow:hidden; }
+  .bubble-row .bav { width:36px; height:36px; border-radius:50%; background:#111; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; flex:none; overflow:hidden; font-size:14px; }
   .bubble-row .bav img { width:100%; height:100%; object-fit:cover; }
   .bubble-row.me .bav { background:#576b95; margin-left:8px; order:2; }
   .bubble-row .bav:not(:empty){ margin-right:8px; }
-  .bubble { max-width:70%; background:#fff; border-radius:8px; padding:10px 12px; font-size:15px; line-height:1.4; box-shadow:0 1px 2px rgba(0,0,0,.06); }
-  .bubble-row.me .bubble { background:#95ec69; }
+  .bubble { max-width:70%; background:#fff; border-radius:10px; padding:10px 12px; font-size:15px; line-height:1.4; box-shadow:0 1px 2px rgba(0,0,0,.06); }
+  .bubble-row.me .bubble { background:#d8d8d8; }
   .chat-input { display:flex; align-items:center; padding:10px 12px; background:#f7f7f7; border-top:1px solid #e5e5e5; }
   .chat-input input { flex:1; margin:0; background:#fff; border:none; border-radius:8px; padding:10px 12px; font-size:15px; height:auto; }
   .popmenu { position:absolute; right:8px; top:44px; background:#fff; border:1px solid #eee; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,.15); min-width:130px; z-index:99; }
   .popmenu div { padding:12px 14px; font-size:14px; color:#333; cursor:pointer; }
-  .popmenu div:hover { background:#f5f5f5; }
-  .popmenu div.red { color:#d33; }
+  .popmenu div:hover { background:#f5f5f5; } .popmenu div.red { color:#d33; }
   .modal-mask { position:fixed; inset:0; background:rgba(0,0,0,.4); display:none; align-items:center; justify-content:center; z-index:200; }
   .modal { background:#fff; border-radius:14px; padding:20px; width:90%; max-width:360px; }
   .modal h3 { margin:0 0 14px; }
@@ -95,13 +106,17 @@
     <div id="tab-home" class="on" onclick="switchTab('home')">主页</div>
     <div id="tab-msg" onclick="switchTab('msg')">信息</div>
   </div>
-  <div id="pane-home" class="wrap" style="display:block;padding-bottom:80px">
+  <div id="pane-home" class="wrap" style="display:block">
+    <div class="hero">
+      <div class="u-av" id="hero-av"></div>
+      <div><div class="u-name" id="hero-name"></div><div class="u-id" id="hero-id"></div></div>
+      <button class="add-btn" onclick="addAI()">+ 添加 AI</button>
+    </div>
     <div id="ai-list"></div>
-    <button class="add-btn" onclick="addAI()">+</button>
   </div>
-  <div id="pane-msg" style="display:none;flex:1;flex-direction:column">
+  <div id="pane-msg">
     <select id="ai-sel" class="ai-sel"></select>
-    <div id="friend-list" style="flex:1;overflow:auto;background:#fff"></div>
+    <div id="friend-list"></div>
   </div>
 </div>
 
@@ -127,7 +142,7 @@
     <div class="preview" id="m-preview" onclick="document.getElementById('m-file').click()">＋</div>
     <input type="file" id="m-file" accept="image/*" style="display:none">
     <div style="display:flex;gap:10px;margin-top:16px">
-      <button class="btn" style="background:#eee;color:#333" onclick="closeAdd()">取消</button>
+      <button class="btn gray" onclick="closeAdd()">取消</button>
       <button class="btn" onclick="saveAI()">保存</button>
     </div>
   </div>
@@ -151,7 +166,6 @@ function api(path, opts={}){
   return fetch(BASE+path, Object.assign({}, opts, {headers:h})).then(r=>r.json());
 }
 function wss(){ return BASE.replace(/^http/,'ws'); }
-function avHtml(a){ return a && a.length>4 ? `<img src="${a}" style="width:100%;height:100%;object-fit:cover">` : ''; }
 
 function toggleAuth(r){ $('login-form').style.display=r?'none':''; $('reg-form').style.display=r?'':'none'; }
 async function doLogin(){
@@ -167,6 +181,9 @@ async function doReg(){
 
 function enter(){
   localStorage.setItem('user',JSON.stringify(USER));
+  $('hero-name').textContent = USER.name;
+  $('hero-id').textContent = 'ID：' + USER.id;
+  $('hero-av').textContent = (USER.name||'?')[0];
   page('auth',false); page('main',true);
   loadAIs(); connectWS();
 }
@@ -188,12 +205,12 @@ async function loadAIs(){
 }
 function renderAIs(){
   const box = $('ai-list');
-  box.innerHTML = AIS.length ? '' : '<div class="empty">还没有 AI，点右下角 + 添加</div>';
+  box.innerHTML = AIS.length ? '' : '<div class="empty">还没有 AI，点右上角添加</div>';
   AIS.forEach(a=>{
     const el = document.createElement('div');
     el.className='ai-card'+(CUR_AI&&String(CUR_AI.id)===String(a.id)?' sel':'');
     const img = (a.avatar&&a.avatar.length>4) ? `<img class="cimg" src="${a.avatar}">` : `<div class="cinit">${(a.name||'?')[0]}</div>`;
-    el.innerHTML = img+`<div class="cinfo"><b>${a.name}</b><div class="meta">AI ID：${a.id}</div><div class="key">交流 key：${a.ai_key}</div></div>`;
+    el.innerHTML = `<div class="ai-main">${img}<div class="ai-txt"><b>${a.name}</b><div class="ai-id">ID：${a.id}</div></div><span class="fr-count">好友 ${a.friends||0}</span></div><div class="key">key：${a.ai_key}</div>`;
     el.onclick = ()=>pickAI(a);
     box.appendChild(el);
   });
