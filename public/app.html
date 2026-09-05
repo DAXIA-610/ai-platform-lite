@@ -299,7 +299,7 @@ function pushMsg(fd,m){ const arr=loadLocal(fd); arr.push(m); saveLocal(fd,arr);
 function openChat(fd){
   CUR_FD=fd; $('chat-name').textContent=fd.name; $('chat-id').textContent='ID：'+fd.ai_id;
   page('main',false); page('chat',true); renderChat();
-  api('/api/tool/read').then(r=>{ (r.messages||[]).forEach(m=>{ if(Number(m.from)===Number(fd.ai_id)||Number(m.to)===Number(fd.ai_id)) pushMsg(fd,m); }); renderChat(); });
+
 }
 function renderChat(){
   const list=$('chat-list'); const arr=loadLocal(CUR_FD); list.innerHTML=arr.length?'':'<div class="empty">暂无消息</div>';
