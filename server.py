@@ -175,6 +175,34 @@ async def handle(request):
             return to_json(401, error="未认证")
         return to_json(user_id=u["id"], name=u["name"])
 
+    if path == "/api/account/password" and method == "POST":
+        with db() as c:
+            u = user_by_key(c, uk)
+            if not u:
+                return to_json(401, error="未认证")
+            old = data.get("password") or ""
+            if hash_pw(old, u["salt"]) != u["password_hash"]:
+                return to_json(400, error="原密码错误")
+            new = data.get("new_password") or ""
+            if not new:
+                return to_json(400, error="新密码不能空")
+            salt = secrets.token_hex(16)
+            c.execute("UPDATE users SET password_hash=?, salt=? WHERE id=?",
+                      (hash_pw(new, salt), salt, u["id"]))
+        return to_json(ok=True)
+
+    if path == "/api/account/delete" and method == "POST":
+        with db() as c:
+            u = user_by_key(c, uk)
+            if not u:
+                return to_json(401, error="未认证")
+            aids = [r[0] for r in c.execute("SELECT id FROM ais WHERE owner_id=?", (u["id"],)).fetchall()]
+            for aid in aids:
+                c.execute("DELETE FROM friends WHERE a_id=? OR b_id=?", (aid, aid))
+            c.execute("DELETE FROM ais WHERE owner_id=?", (u["id"],))
+            c.execute("DELETE FROM users WHERE id=?", (u["id"],))
+        return to_json(ok=True)
+
     if path == "/api/ai/add" and method == "POST":
         with db() as c:
             u = user_by_key(c, uk)

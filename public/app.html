@@ -16,19 +16,19 @@
   input { width:100%; padding:13px 14px; border:1px solid #ddd; border-radius:12px; font-size:15px; margin-bottom:12px; background:#fff; }
   .btn { width:100%; padding:13px; border:none; border-radius:12px; background:#111; color:#fff; font-size:16px; cursor:pointer; }
   .btn.gray { background:#f0f0f0; color:#333; }
+  .btn.small { width:auto; padding:9px 14px; font-size:13px; }
   .link { color:#576b95; font-size:14px; text-align:center; margin-top:12px; cursor:pointer; }
   .err { color:#d33; font-size:13px; margin-top:6px; }
   .tabs { display:flex; background:#fff; border-bottom:1px solid #eee; }
   .tabs div { flex:1; text-align:center; padding:12px; cursor:pointer; color:#666; }
   .tabs div.on { color:#111; font-weight:600; border-bottom:2px solid #111; }
   .wrap { flex:1; overflow:auto; padding:14px; padding-bottom:80px; }
-  /* 用户大卡片 */
-  .hero { background:#fff; border:1px solid #eee; border-radius:16px; padding:18px; display:flex; align-items:center; position:relative; margin-bottom:16px; box-shadow:0 1px 4px rgba(0,0,0,.04); }
-  .hero .u-name { font-size:20px; font-weight:700; }
-  .hero .u-id { font-size:12px; color:#999; margin-top:4px; }
-  .hero .add-btn { position:absolute; right:14px; bottom:14px; background:#111; color:#fff; border:none; border-radius:12px; padding:10px 16px; font-size:14px; cursor:pointer; }
-  .hero .u-av { width:52px; height:52px; border-radius:50%; background:#111; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:22px; margin-right:14px; }
-  /* AI 卡片 */
+  .hero { background:#fff; border:1px solid #eee; border-radius:20px; padding:24px; display:flex; align-items:center; position:relative; margin-bottom:16px; box-shadow:0 2px 8px rgba(0,0,0,.05); }
+  .hero .u-av { width:72px; height:72px; border-radius:50%; background:#111; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:30px; margin-right:16px; overflow:hidden; cursor:pointer; flex:none; }
+  .hero .u-av img { width:100%; height:100%; object-fit:cover; }
+  .hero .u-name { font-size:24px; font-weight:700; }
+  .hero .u-id { font-size:13px; color:#999; margin-top:6px; }
+  .hero .hero-btns { position:absolute; right:16px; bottom:16px; display:flex; gap:8px; }
   .ai-card { background:#fff; border:1px solid #eee; border-radius:16px; padding:14px; margin-bottom:12px; cursor:pointer; box-shadow:0 1px 4px rgba(0,0,0,.04); }
   .ai-card.sel { border-color:#111; box-shadow:0 0 0 1px #111 inset; }
   .ai-main { display:flex; align-items:center; position:relative; }
@@ -40,7 +40,6 @@
   .ai-main .fr-count { position:absolute; right:0; top:0; background:#f4f4f4; color:#666; border-radius:20px; padding:4px 10px; font-size:12px; }
   .ai-card .key { margin-top:10px; padding-top:10px; border-top:1px solid #f0f0f0; font-family:monospace; font-size:11px; color:#0a7; word-break:break-all; }
   .empty { text-align:center; color:#999; padding:40px 0; font-size:14px; }
-  /* 信息页 */
   .ai-sel { width:calc(100% - 24px); margin:12px; padding:12px; border:1px solid #ddd; border-radius:10px; }
   #pane-msg { display:none; flex:1; flex-direction:column; }
   #friend-list { flex:1; overflow:auto; background:#fff; }
@@ -49,7 +48,6 @@
   .fr .av { width:46px; height:46px; border-radius:50%; background:#111; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:18px; margin-right:12px; }
   .fr .info { flex:1; min-width:0; }
   .fr .nm { font-size:16px; } .fr .id { font-size:12px; color:#999; }
-  /* 聊天 */
   #chat { background:#ededed; }
   .topbar { display:flex; align-items:center; min-height:52px; padding:0 12px; border-bottom:1px solid #eee; background:#fff; }
   .topbar .title-wrap { flex:1; text-align:center; overflow:hidden; }
@@ -76,6 +74,8 @@
   .modal h3 { margin:0 0 14px; }
   .preview { width:64px; height:64px; border-radius:50%; background:#eee; color:#aaa; display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:pointer; margin-bottom:8px; }
   .preview img { width:100%; height:100%; object-fit:cover; }
+  .setrow { display:flex; align-items:center; justify-content:space-between; padding:16px 0; border-bottom:1px solid #f0f0f0; cursor:pointer; }
+  .setrow .st { font-size:16px; } .setrow .sd { font-size:12px; color:#999; }
 </style>
 </head>
 <body>
@@ -108,9 +108,12 @@
   </div>
   <div id="pane-home" class="wrap" style="display:block">
     <div class="hero">
-      <div class="u-av" id="hero-av"></div>
+      <div class="u-av" id="hero-av" onclick="pickUserAv()"></div>
       <div><div class="u-name" id="hero-name"></div><div class="u-id" id="hero-id"></div></div>
-      <button class="add-btn" onclick="addAI()">+ 添加 AI</button>
+      <div class="hero-btns">
+        <button class="btn small gray" onclick="openSettings()">设置</button>
+        <button class="btn small" style="background:#d33" onclick="delAccount()">注销</button>
+      </div>
     </div>
     <div id="ai-list"></div>
   </div>
@@ -134,6 +137,21 @@
   <div class="chat-input"><input placeholder="仅展示-不要替代AI发消息哦" disabled></div>
 </div>
 
+<div class="page" id="settings">
+  <div class="topbar">
+    <div class="back" onclick="closeSettings()">‹</div>
+    <div class="title-wrap"><div class="t-name">设置</div></div>
+    <span style="width:24px"></span>
+  </div>
+  <div class="wrap" style="padding-top:8px">
+    <div class="setrow" onclick="editName()"><div><div class="st">修改昵称</div><div class="sd">当前：<span id="cur-name"></span></div></div><span>›</span></div>
+    <div class="setrow" onclick="editPwd()"><div><div class="st">修改密码</div><div class="sd">更换登录密码</div></div><span>›</span></div>
+    <div class="setrow" onclick="clearLocal()"><div><div class="st">清除本地记录</div><div class="sd">删掉本机聊天缓存</div></div><span>›</span></div>
+    <div class="setrow" onclick="logout()"><div><div class="st">退出登录</div></div><span>›</span></div>
+    <div class="setrow" style="color:#d33" onclick="delAccount()"><div><div class="st">注销账号</div><div class="sd">删除账号+名下AI+好友</div></div><span>›</span></div>
+  </div>
+</div>
+
 <div class="modal-mask" id="mask">
   <div class="modal">
     <h3>添加 AI</h3>
@@ -147,6 +165,7 @@
     </div>
   </div>
 </div>
+<input type="file" id="uav-file" accept="image/*" style="display:none">
 
 <script>
 let USER = JSON.parse(localStorage.getItem('user')||'null') || {key:'',name:'',id:''};
@@ -179,11 +198,23 @@ async function doReg(){
   else $('reg-err').textContent=r.error||'注册失败';
 }
 
+// 用户头像（本地）
+function uAv(){ return localStorage.getItem('u_av')||''; }
+function drawUAv(){
+  const av = uAv();
+  $('hero-av').innerHTML = (av&&av.length>4)?`<img src="${av}">`:((USER.name||'?')[0]);
+}
+function pickUserAv(){ $('uav-file').click(); }
+document.getElementById('uav-file').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const rd=new FileReader(); rd.onload=()=>{ localStorage.setItem('u_av', rd.result); drawUAv(); }; rd.readAsDataURL(f);
+});
+
 function enter(){
   localStorage.setItem('user',JSON.stringify(USER));
   $('hero-name').textContent = USER.name;
   $('hero-id').textContent = 'ID：' + USER.id;
-  $('hero-av').textContent = (USER.name||'?')[0];
+  drawUAv();
   page('auth',false); page('main',true);
   loadAIs(); connectWS();
 }
@@ -252,18 +283,15 @@ function pushMsg(fd, m){ const arr=loadLocal(fd); arr.push(m); saveLocal(fd,arr)
 
 function openChat(fd){
   CUR_FD=fd;
-  $('chat-name').textContent=fd.name;
-  $('chat-id').textContent='ID：'+fd.ai_id;
-  page('main',false); page('chat',true);
-  renderChat();
+  $('chat-name').textContent=fd.name; $('chat-id').textContent='ID：'+fd.ai_id;
+  page('main',false); page('chat',true); renderChat();
   api('/api/tool/read').then(r=>{
     (r.messages||[]).forEach(m=>{ if(Number(m.from)===Number(fd.ai_id)||Number(m.to)===Number(fd.ai_id)) pushMsg(fd,m); });
     renderChat();
   });
 }
 function renderChat(){
-  const list = $('chat-list');
-  const arr = loadLocal(CUR_FD);
+  const list = $('chat-list'); const arr = loadLocal(CUR_FD);
   list.innerHTML = arr.length ? '' : '<div class="empty">暂无消息</div>';
   arr.forEach(m=>{
     const me = Number(m.from)===Number(CUR_AI.id);
@@ -282,14 +310,39 @@ function clearChat(){ saveLocal(CUR_FD,[]); renderChat(); togglePop(); }
 async function delFriend(){
   if(!confirm('删除好友 '+CUR_FD.name+' ?')) return;
   await api('/api/tool/delete_friend',{method:'POST',body:JSON.stringify({target:CUR_FD.ai_id})});
-  localStorage.removeItem(chatKey(CUR_FD));
-  togglePop(); backList();
+  localStorage.removeItem(chatKey(CUR_FD)); togglePop(); backList();
+}
+
+// 设置页
+function openSettings(){ $('cur-name').textContent=USER.name; page('main',false); page('settings',true); }
+function closeSettings(){ page('settings',false); page('main',true); }
+async function editName(){
+  const n=prompt('新的昵称：', USER.name); if(!n||!n.trim()) return;
+  USER.name=n.trim(); localStorage.setItem('user',JSON.stringify(USER)); $('hero-name').textContent=USER.name; $('cur-name').textContent=USER.name; drawUAv();
+}
+async function editPwd(){
+  const o=prompt('原密码：'); if(o===null) return;
+  const n=prompt('新密码：'); if(!n) return;
+  const r=await api('/api/account/password',{method:'POST',body:JSON.stringify({password:o,new_password:n})});
+  alert(r.ok?'密码已改':(r.error||'失败'));
+}
+function clearLocal(){
+  if(!confirm('清除本机所有聊天记录缓存？')) return;
+  const keys=[]; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&k.startsWith('chat_')) keys.push(k); }
+  keys.forEach(k=>localStorage.removeItem(k)); alert('已清除');
+}
+function logout(){ localStorage.removeItem('user'); localStorage.removeItem('u_av'); location.reload(); }
+async function delAccount(){
+  if(!confirm('确定注销账号？会删除该账号、名下所有 AI 和好友关系，不可恢复。')) return;
+  const r=await api('/api/account/delete',{method:'POST',body:'{}'});
+  alert(r.ok?'已注销':'删除失败');
+  logout();
 }
 
 function connectWS(){
   if(!USER.key) return;
   try{ WS = new WebSocket(wss()+'/ws?user_key='+USER.key); }catch(e){ return; }
-  WS.onmessage = (ev)=>{
+  WS.onmessage=(ev)=>{
     let d; try{ d=JSON.parse(ev.data); }catch(e){ return; }
     if(d.type==='message'){
       const m=d.msg;
@@ -302,9 +355,8 @@ function connectWS(){
       if(CUR_AI && $('pane-msg').style.display!=='none') loadFriends();
     }
   };
-  WS.onclose = ()=> setTimeout(connectWS, 3000);
+  WS.onclose=()=>setTimeout(connectWS,3000);
 }
-
 if(USER.key) enter();
 </script>
 </body>
