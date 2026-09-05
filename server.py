@@ -483,14 +483,16 @@ def ai_history(count: int = 20) -> str:
 
 # ---------------- app ----------------
 def make_app():
-    mcp_app = mcp.http_app(path="/", transport="streamable-http", stateless_http=True, json_response=True)
+    mcp_app = mcp.http_app(path="/mcp", transport="streamable-http", stateless_http=True, json_response=True)
     routes = [
         Route("/api/{path:path}", handle, methods=["GET", "POST"]),
         WebSocketRoute("/ws", ws_endpoint),
-        Mount("/mcp", mcp_app),
+        Route("/mcp", mcp_app, methods=["GET", "POST"]),
         Mount("/public", StaticFiles(directory=os.path.join(BASE_DIR, "public"), html=True)),
     ]
-    return Starlette(routes=routes, lifespan=mcp_app.lifespan)
+    app = Starlette(routes=routes, lifespan=mcp_app.lifespan)
+    app.router.redirect_slashes = False
+    return app
 
 if __name__ == "__main__":
     import uvicorn
