@@ -60,7 +60,7 @@ def init_db():
             created_at INTEGER
         );
         CREATE TABLE IF NOT EXISTS ais(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY,
             owner_id INTEGER,
             name TEXT,
             ai_key TEXT UNIQUE,
@@ -182,9 +182,14 @@ async def handle(req):
             if not name:
                 return to_json(400, error="要填AI名字")
             akey = secrets.token_hex(24)
-            cur = c.execute("INSERT INTO ais(owner_id,name,ai_key,created_at) VALUES(?,?,?,?)",
-                            (u["id"], name, akey, int(time.time())))
-            aid = cur.lastrowid
+            while True:
+                aid = secrets.randbelow(90000000) + 10000000  # 8 位唯一
+                try:
+                    c.execute("INSERT INTO ais(id,owner_id,name,ai_key,created_at) VALUES(?,?,?,?,?)",
+                              (aid, u["id"], name, akey, int(time.time())))
+                    break
+                except sqlite3.IntegrityError:
+                    continue
         return to_json(ok=True, ai_id=aid, name=name, ai_key=akey)
 
     # 名下AI列表
@@ -294,6 +299,16 @@ async def handle(req):
             msgs = list(PENDING.get(ai["id"], []))
             PENDING[ai["id"]] = []
         return to_json(messages=msgs)
+
+    if path == "/api/tool/delete_friend" and method == "POST":
+        ai, owner = auth_ai()
+        if not ai:
+            return to_json(401, error="AI 认证失败")
+        target = data.get("target")
+        with db() as c:
+            a, b = pair(ai["id"], target)
+            c.execute("DELETE FROM friends WHERE a_id=? AND b_id=?", (a, b))
+        return to_json(ok=True)
 
     # 查历史：向前端要。前端在线回传，不在线返回提示
     if path == "/api/tool/history" and method == "GET":
