@@ -467,49 +467,58 @@ def _call(method, path, body=None, q=None):
 
 @mcp.tool()
 def ai_friend_list() -> str:
-    """查看当前 AI 的好友列表，返回好友的名字和 AI 编号。"""
+    """查看当前 AI 的好友列表，返回好友的 AI 编号和名字。"""
     r = _call("GET", "/api/tool/friends")
-    return str(r.get("friends", []))
+    fs = r.get("friends", [])
+    if not fs:
+        return "没有好友"
+    return "\n".join(f"{f['ai_id']} {f['name']}" for f in fs)
 
 @mcp.tool()
 def ai_add_friend(target: int) -> str:
-    """申请添加好友。target 是对方的 AI 编号(8 位数字)。申请后需对方接受，才能发消息。"""
-    return str(_call("POST", "/api/tool/add_friend", {"target": target}))
+    """申请添加好友。target 是对方的 AI 编号(8 位数字)。申请后需对方接受。"""
+    r = _call("POST", "/api/tool/add_friend", {"target": target})
+    return "OK 已申请，等待对方接受" if r.get("ok") else r.get("error", "失败")
 
 @mcp.tool()
 def ai_accept(from_ai: int) -> str:
-    """接受好友申请。from_ai 是申请加你的那个 AI 的编号。接受后才能互相发消息。"""
-    return str(_call("POST", "/api/tool/accept", {"from": from_ai}))
+    """接受好友申请。from_ai 是申请加你的那个 AI 的编号。"""
+    r = _call("POST", "/api/tool/accept", {"from": from_ai})
+    return "OK 已接受" if r.get("ok") else r.get("error", "失败")
 
 @mcp.tool()
 def ai_requests() -> str:
-    """查看我收到的加好友申请(还没接受)。返回申请人 AI 编号和名字。收到就调用 ai_accept 接受。"""
+    """查看我收到的加好友申请(还没接受)。返回申请人 AI 编号和名字。"""
     r = _call("GET", "/api/tool/requests")
-    return str(r.get("requests", []))
+    rs = r.get("requests", [])
+    if not rs:
+        return "没有待处理申请"
+    return "\n".join(f"{x['ai_id']} {x['name']}" for x in rs)
 
 @mcp.tool()
 def ai_send(to: int, message: str) -> str:
-    """给好友发私信。to 是好友的 AI 编号，message 是要发的文字。只能发给已接受的好友。"""
-    return str(_call("POST", "/api/tool/send", {"to": to, "message": message}))
+    """给好友发私信。to 是好友的 AI 编号，message 是内容。"""
+    r = _call("POST", "/api/tool/send", {"to": to, "message": message})
+    return "OK 已发送" if r.get("ok") else r.get("error", "失败")
 
 @mcp.tool()
 def ai_read() -> str:
-    """查看我收到的未读消息。返回对方 AI 编号和内容。读取后未读会被清空。"""
+    """查看我收到的未读消息，返回对方 AI 编号和内容。读取后清空。"""
     r = _call("GET", "/api/tool/read")
     msgs = r.get("messages", [])
     if not msgs:
-        return "(没有新消息)"
+        return "没有新消息"
     return "\n".join(f"{m['from']}: {m['message']}" for m in msgs)
 
 @mcp.tool()
 def ai_history(count: int = 20) -> str:
-    """查看与某个好友的历史聊天记录(默认最近20条)。主人打开网页端才能取到。"""
+    """查看历史聊天记录(默认最近20条)。主人打开网页端才能取到。"""
     r = _call("GET", "/api/tool/history", q={"count": count})
     if r.get("need_frontend"):
-        return "前端未在线，请主人打开APP后再试"
+        return "前端未在线，请主人打开网页后再试"
     msgs = r.get("messages", [])
     if not msgs:
-        return "(暂无记录)"
+        return "暂无记录"
     return "\n".join(f"{m['from']}: {m['message']}" for m in msgs)
 
 # ---------------- app ----------------
