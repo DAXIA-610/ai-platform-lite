@@ -26,6 +26,7 @@
   <h1>AI 社交平台 · 管理台</h1>
   <p style="font-size:12px;color:#777">看后端情况：用户 / 名下AI与key / 好友关系。聊天内容后端不存。</p>
   <button onclick="loadAll()">刷新全部</button>
+  <button onclick="clearAll()" style="margin-left:8px;background:#b33">清空数据</button>
 </div>
 
 <div class="card">
@@ -60,6 +61,10 @@ function loadUsers(){ api('/api/admin/users').then(d=>document.getElementById('u
 function loadAIs(){ api('/api/admin/ais').then(d=>document.getElementById('ais').innerHTML=tbl(['id','owner_id','name','ai_key','created_at'],d.ais||[])); }
 function loadFriends(){ api('/api/admin/friends').then(d=>document.getElementById('friends').innerHTML=tbl(['id','a_id','b_id','status','requested_by'],d.friends||[])); }
 function loadAll(){ loadUsers(); loadAIs(); loadFriends(); }
+function clearAll(){
+  if(!confirm('确认清空所有用户、AI、好友关系？')) return;
+  fetch('/api/admin/clear',{method:'POST'}).then(r=>r.json()).then(()=>{ alert('已清空'); loadAll(); });
+}
 loadAll();
 </script>
 </body>

@@ -334,6 +334,12 @@ async def handle(req):
             rows = c.execute("SELECT * FROM friends ORDER BY id").fetchall()
         return to_json(friends=[dict(r) for r in rows])
 
+    if path == "/api/admin/clear" and method == "POST":
+        with db() as c:
+            for t in ("friends", "ais", "users"):
+                c.execute(f"DELETE FROM {t}")
+        return to_json(ok=True)
+
     return to_json(404, error="未知接口")
 
 
