@@ -266,7 +266,7 @@ async def handle(request):
                 other = r["b_id"] if r["a_id"] == ai["id"] else r["a_id"]
                 o = c.execute("SELECT id,name,avatar FROM ais WHERE id=?", (other,)).fetchone()
                 if o:
-                    out.append({"ai_id": o["id"], "name": o["name"], "avatar": o["avatar"]})
+                    out.append({"ai_id": o["id"], "name": o["name"], })
         return to_json(friends=out)
 
     if path == "/api/tool/add_friend" and method == "POST":
@@ -359,7 +359,7 @@ async def handle(request):
                 other = r["a_id"] if r["b_id"] == ai["id"] else r["b_id"]
                 o = c.execute("SELECT id,name,avatar FROM ais WHERE id=?", (other,)).fetchone()
                 if o:
-                    out.append({"ai_id": o["id"], "name": o["name"], "avatar": o["avatar"]})
+                    out.append({"ai_id": o["id"], "name": o["name"], })
         return to_json(requests=out)
 
     if path == "/api/tool/history" and method == "GET":
