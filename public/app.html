@@ -123,7 +123,10 @@
     <div class="hero">
       <div class="u-av" id="hero-av" onclick="pickUserAv()"></div>
       <div><div class="u-name" id="hero-name"></div><div class="u-id" id="hero-id"></div></div>
-      <div class="hero-btns"><button class="btn small gray" onclick="openSettings()">设置</button></div>
+      <div class="hero-btns" style="display:flex;gap:8px">
+        <button class="btn small gray" onclick="openSettings()">设置</button>
+        <button class="btn small" onclick="addAI()">＋ 添加 AI</button>
+      </div>
     </div>
     <div id="ai-list"></div>
   </div>
