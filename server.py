@@ -22,6 +22,7 @@ from starlette.routing import Route, WebSocketRoute, Mount
 from starlette.responses import JSONResponse
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
 
@@ -657,12 +658,13 @@ def make_app():
     app = Starlette(routes=routes, lifespan=mcp_app.lifespan)
     app.router.redirect_slashes = False
 
-    @app.middleware("http")
-    async def no_cache(request, call_next):
-        response = await call_next(request)
-        if "/public/" in request.url.path:
-            response.headers["Cache-Control"] = "no-store"
-        return response
+    class NoCacheMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
+            response = await call_next(request)
+            if "/public/" in request.url.path:
+                response.headers["Cache-Control"] = "no-store"
+            return response
+    app.add_middleware(NoCacheMiddleware)
 
     return app
 
