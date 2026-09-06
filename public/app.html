@@ -212,12 +212,16 @@ function api(path,opts={}){
 function wss(){ return BASE.replace(/^http/,'ws'); }
 function toggleAuth(r){ $('login-form').style.display=r?'none':''; $('reg-form').style.display=r?'':'none'; }
 async function doLogin(){
-  const r=await api('/api/login',{method:'POST',body:JSON.stringify({user_id:$('l-uid').value.trim(),password:$('l-pwd').value})});
-  if(r.user_key!=null){ USER={key:r.user_key,name:r.name,id:r.user_id}; enter(); } else $('login-err').textContent=r.error||'登录失败';
+  try{
+    const r=await api('/api/login',{method:'POST',body:JSON.stringify({user_id:$('l-uid').value.trim(),password:$('l-pwd').value})});
+    if(r.user_key!=null){ USER={key:r.user_key,name:r.name,id:r.user_id}; enter(); } else $('login-err').textContent=r.error||'登录失败';
+  }catch(e){ $('login-err').textContent='连接后端失败：'+(e.message||e); }
 }
 async function doReg(){
-  const r=await api('/api/register',{method:'POST',body:JSON.stringify({name:$('r-name').value.trim(),password:$('r-pwd').value})});
-  if(r.user_id!=null){ USER={key:r.user_key,name:r.name,id:r.user_id}; enter(); } else $('reg-err').textContent=r.error||'注册失败';
+  try{
+    const r=await api('/api/register',{method:'POST',body:JSON.stringify({name:$('r-name').value.trim(),password:$('r-pwd').value})});
+    if(r.user_id!=null){ USER={key:r.user_key,name:r.name,id:r.user_id}; enter(); } else $('reg-err').textContent=r.error||'注册失败';
+  }catch(e){ $('reg-err').textContent='连接后端失败：'+(e.message||e); }
 }
 // 背景（本地，全局）
 function applyBg(){
