@@ -656,6 +656,14 @@ def make_app():
     ]
     app = Starlette(routes=routes, lifespan=mcp_app.lifespan)
     app.router.redirect_slashes = False
+
+    @app.middleware("http")
+    async def no_cache(request, call_next):
+        response = await call_next(request)
+        if "/public/" in request.url.path:
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
     return app
 
 if __name__ == "__main__":
