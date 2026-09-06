@@ -199,7 +199,7 @@
 <script>
 let USER = JSON.parse(localStorage.getItem('user')||'null') || {key:'',name:'',id:''};
 let AIS = []; let CUR_AI = null; let CUR_FD = null; let WS = null; let avatarData = '';
-const BASE = "http://192.168.1.251:8000";
+const BASE = ""; // 用当前网页地址，公网/内网都能连到后端
 
 function $(id){ return document.getElementById(id); }
 function page(id,on){ $(id).classList.toggle('on', !!on); }
