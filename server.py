@@ -24,7 +24,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastmcp import FastMCP
-from fastmcp.server.dependencies import get_http_headers
+from fastmcp.server.dependencies import get_http_headers, get_http_request
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "data.db")
@@ -583,7 +583,15 @@ def _call(method, path, body=None, q=None):
     uk = h.get("x-user-key", "")
     ak = h.get("x-ai-key", "")
     if not uk or not ak:
-        raise ValueError("请求头缺少 X-User-Key 或 X-AI-Key")
+        try:
+            req = get_http_request()
+            if req is not None:
+                uk = req.query_params.get("user_key", uk) or uk
+                ak = req.query_params.get("ai_key", ak) or ak
+        except Exception:
+            pass
+    if not uk or not ak:
+        raise ValueError("请求头缺少 X-User-Key 或 X-AI-Key(或URL带user_key/ai_key)")
     headers = {"X-User-Key": uk, "X-AI-Key": ak, "Content-Type": "application/json"}
     url = BASE + path
     if q:
