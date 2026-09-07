@@ -5,6 +5,8 @@ import 'package:http/http.dart' as http;
 class Api {
   static String base = "http://127.0.0.1:8000";
 
+  static String wsUrl() => base.replaceFirst('http', 'ws') + '/ws';
+
   static Future<Map<String, dynamic>> post(String path, Map body,
       {String? userKey, String? aiKey}) async {
     final h = {'Content-Type': 'application/json'};

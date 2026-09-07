@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'api.dart';
 
@@ -13,6 +15,7 @@ class _SpyRoomPageState extends State<SpyRoomPage> {
   Map<String, dynamic>? _room;
   Map<String, dynamic>? _card;
   Timer? _t;
+  WebSocket? _ws;
   bool _busy = false;
 
   @override
@@ -20,10 +23,25 @@ class _SpyRoomPageState extends State<SpyRoomPage> {
     super.initState();
     _refresh();
     _t = Timer.periodic(const Duration(seconds: 3), (_) => _refresh());
+    _connectWs();
   }
 
   @override
-  void dispose() { _t?.cancel(); super.dispose(); }
+  void dispose() { _t?.cancel(); _ws?.close(); super.dispose(); }
+
+  void _connectWs() {
+    try {
+      WebSocket.connect(Api.wsUrl() + '?user_key=${widget.userKey}').then((ws) {
+        _ws = ws;
+        ws.listen((data) {
+          final Map m = jsonDecode(data as String) as Map;
+          if (m['type'] == 'room_update' && m['room_id'] == widget.roomId && m['room'] != null) {
+            if (mounted) setState(() => _room = m['room']);
+          }
+        }, onError: (_) {}, onDone: () {});
+      }).catchError((_) {});
+    } catch (_) {}
+  }
 
   Future<void> _refresh() async {
     final r = await Api.roomStatus(widget.roomId, widget.userKey);

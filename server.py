@@ -308,6 +308,19 @@ async def buf_push(user_id, data):
         except Exception:
             pass
 
+async def _broadcast_room(rid):
+    room = ROOMS.get(rid)
+    if not room:
+        return
+    st = room_status(rid)
+    uids = []
+    for p in room["players"]:
+        if p.get("uid") and p["uid"] not in uids:
+            uids.append(p["uid"])
+    data = {"type": "room_update", "room_id": rid, "room": st}
+    for u in uids:
+        await buf_push(u, data)
+
 async def buffer_msg(msg):
     async with LOCK:
         PENDING.setdefault(msg["to"], []).append(msg)
@@ -706,6 +719,7 @@ async def handle(request):
             if action == "create":
                 room = room_create(data.get("name"), data.get("game"),
                                    data.get("max_players") or 6, crew)
+                await _broadcast_room(room["id"])
                 return to_json(ok=True, room=room_status(room["id"]), room_id=room["id"])
             rid = str(data.get("room_id") or "").strip()
             if action == "join":
@@ -714,10 +728,12 @@ async def handle(request):
                     return to_json(404, error="房间不存在")
                 if code == "full":
                     return to_json(409, error="房间已满")
+                await _broadcast_room(rid)
                 return to_json(ok=True, room=room_status(rid))
             if action == "leave":
                 key = ("a", crew["ai_id"]) if crew["is_ai"] else ("u", crew["uid"])
                 code, msg = room_leave(rid, key)
+                await _broadcast_room(rid)
                 return to_json(ok=(code == "ok"), error="" if code == "ok" else msg, msg=msg)
             if action == "status":
                 st = room_status(rid)
@@ -747,6 +763,7 @@ async def handle(request):
                 code, res = game_start(rid)
                 if code != "ok":
                     return to_json(400, error=res)
+                await _broadcast_room(rid)
                 return to_json(ok=True, room=room_status(rid))
             if action == "my_card":
                 code, res = game_mycard(rid, key)
@@ -757,6 +774,7 @@ async def handle(request):
                 code, res = game_speak(rid, key, data.get("text") or "")
                 if code != "ok":
                     return to_json(400, error=res)
+                await _broadcast_room(rid)
                 return to_json(ok=True, room=room_status(rid))
             if action == "vote":
                 tkey = data.get("target")
@@ -771,6 +789,7 @@ async def handle(request):
                 code, res = game_vote(rid, key, tk)
                 if code != "ok":
                     return to_json(400, error=res)
+                await _broadcast_room(rid)
                 return to_json(ok=True, **res)
             if action == "reveal":
                 st = room_reveal(rid)
