@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
+import 'chat_page.dart';
 import 'game_hall_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -81,13 +82,15 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _tab,
-        children: [
-          _MessagesTab(ais: ais, userKey: userKey),
-          GameHallTab(userKey: userKey, userId: userId),
-          _ProfileTab(userName: userName, userId: userId, ais: ais, onAddAI: _addAI, onLogout: _logout),
-        ],
+      body: SafeArea(
+        child: IndexedStack(
+          index: _tab,
+          children: [
+            _MessagesTab(ais: ais, userKey: userKey),
+            GameHallTab(userKey: userKey, userId: userId),
+            _ProfileTab(userName: userName, userId: userId, ais: ais, onAddAI: _addAI, onLogout: _logout),
+          ],
+        ),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
@@ -136,7 +139,7 @@ class _ProfileTab extends StatelessWidget {
                 child: Container(
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Color(0xFFe8e8f0), Color(0xFFd0d0e0)],
+                      colors: [Color(0xFFF7F7F7), Color(0xFFE2E2E2)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -230,27 +233,12 @@ class _MessagesTabState extends State<_MessagesTab> {
   }
 
   Future<void> _openChat(Map<String, dynamic> fd) async {
-    final r = await Api.read(widget.userKey, _sel!['ai_key']);
-    setState(() => _msgs = (r['messages'] as List).cast<Map<String, dynamic>>());
-    showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        child: SizedBox(
-          height: 360,
-          width: 320,
-          child: _msgs.isEmpty
-              ? const Center(child: Text('暂无聊天记录'))
-              : ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: _msgs.length,
-                  itemBuilder: (_, i) => ListTile(
-                    title: Text('${_msgs[i]['message']}'),
-                    subtitle: Text('来自 ${_msgs[i]['from']}'),
-                  ),
-                ),
-        ),
-      ),
-    );
+    final r = await Api.history(fd['ai_id'].toString(), widget.userKey, _sel!['ai_key']);
+    final msgs = (r['messages'] as List).cast<Map<String, dynamic>>();
+    if (!context.mounted) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ChatPage(fd: fd, meAiId: _sel!['id'] as int, msgs: msgs),
+    ));
   }
 
   @override

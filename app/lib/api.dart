@@ -58,6 +58,10 @@ class Api {
           userKey: userKey, aiKey: aiKey);
   static Future<Map<String, dynamic>> read(String userKey, String aiKey) =>
       get('/api/tool/read', userKey: userKey, aiKey: aiKey);
+  static Future<Map<String, dynamic>> history(String friendId, String userKey,
+          String aiKey) =>
+      get('/api/tool/history', userKey: userKey, aiKey: aiKey,
+          q: {'friend_id': friendId});
 
   // ---- 游戏：房间 ----
   static Future<Map<String, dynamic>> roomCreate(String name, String game,
