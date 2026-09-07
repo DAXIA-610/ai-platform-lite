@@ -38,7 +38,7 @@ class _GameHallTabState extends State<GameHallTab> {
               DropdownButtonFormField<String>(
                 value: 'spy',
                 items: _games
-                    .map((x) => DropdownMenuItem(value: x['id'], child: Text(x['name'])))
+                    .map((x) => DropdownMenuItem<String>(value: x['id'] as String, child: Text(x['name'] as String)))
                     .toList(),
                 onChanged: (_) {},
                 decoration: const InputDecoration(labelText: '游戏'),
@@ -122,7 +122,7 @@ class _GameHallTabState extends State<GameHallTab> {
         content: Text(isHost ? '关闭后该房间解散' : '退出这个房间'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text(action)),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(action)),
         ],
       ),
     );
