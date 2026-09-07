@@ -112,6 +112,191 @@ def ai_by_key(c, key):
 def pair(a, b):
     return (a, b) if a < b else (b, a)
 
+# ---------------- game rooms ----------------
+ROOMS = {}
+ROOM_LOCK = asyncio.Lock()
+ROOM_MAX = 8
+
+# 谁是卧底词库：(平民词, 卧底词)
+SPY_WORDS = [
+    ("苹果", "梨子"), ("咖啡", "奶茶"), ("地铁", "高铁"), ("饺子", "馄饨"),
+    ("电影院", "剧院"), ("麻辣烫", "关东煮"), ("老虎", "狮子"), ("字典", "词典"),
+    ("感冒", "发烧"), ("香蕉", "芒果"), ("键盘", "鼠标"), ("眼睛", "鼻子"),
+    ("可乐", "汽水"), ("粽子", "月饼"), ("洗发水", "沐浴露"), ("吉他", "尤克里里"),
+]
+
+def _new_room_id():
+    while True:
+        rid = str(secrets.randbelow(900000) + 100000)  # 6位
+        if rid not in ROOMS:
+            return rid
+
+def _pkey(p):
+    return ("a", p["ai_id"]) if p["is_ai"] else ("u", p["uid"])
+
+def _find(room, key):
+    for p in room["players"]:
+        if _pkey(p) == key:
+            return p
+    return None
+
+def _mk_player(crew, seat):
+    return dict(uid=crew.get("uid"), ai_id=crew.get("ai_id"),
+                name=crew.get("name") or "玩家", avatar=crew.get("avatar") or "",
+                is_ai=bool(crew.get("is_ai")), alive=True, role=None, card=None, seat=seat)
+
+def room_create(name, game, max_players, crew):
+    rid = _new_room_id()
+    p0 = _mk_player(crew, 0)
+    room = {"id": rid, "name": (name or "").strip() or "房间", "game": game or "spy",
+            "status": "waiting", "host": _pkey(p0),
+            "max_players": min(int(max_players or 6), ROOM_MAX),
+            "created_at": time.time(), "players": [p0], "round": 0, "phase": "waiting",
+            "words": None, "descs": []}
+    ROOMS[rid] = room
+    return room
+
+def room_join(rid, crew):
+    room = ROOMS.get(rid)
+    if not room:
+        return "notfound", "房间不存在"
+    key = ("a", crew.get("ai_id")) if crew.get("is_ai") else ("u", crew.get("uid"))
+    if _find(room, key):
+        return "ok", room
+    if len(room["players"]) >= room["max_players"]:
+        return "full", "房间已满"
+    room["players"].append(_mk_player(crew, len(room["players"])))
+    return "ok", room
+
+def room_leave(rid, key):
+    room = ROOMS.get(rid)
+    if not room:
+        return "notfound", "房间不存在"
+    p = _find(room, key)
+    if not p:
+        return "fail", "不在房间"
+    room["players"].remove(p)
+    if _find(room, room["host"]) is None and room["players"]:
+        room["host"] = _pkey(room["players"][0])
+    if not room["players"]:
+        ROOMS.pop(rid, None)
+        return "ok", "房间已解散"
+    return "ok", "退出成功"
+
+def room_status(rid):
+    room = ROOMS.get(rid)
+    if not room:
+        return None
+    pl = [{"uid": p["uid"], "ai_id": p["ai_id"], "name": p["name"], "avatar": p["avatar"],
+           "is_ai": p["is_ai"], "alive": p["alive"], "seat": p["seat"], "host": _pkey(p) == room["host"]}
+          for p in room["players"]]
+    return {"id": room["id"], "name": room["name"], "game": room["game"], "status": room["status"],
+            "round": room["round"], "phase": room["phase"], "max_players": room["max_players"],
+            "players": pl}
+
+def game_start(rid):
+    import random
+    room = ROOMS.get(rid)
+    if not room:
+        return "notfound", "房间不存在"
+    if room["status"] != "waiting":
+        return "bad", "游戏已开始"
+    if len(room["players"]) < 3:
+        return "bad", "人数不足3人"
+    words = random.choice(SPY_WORDS)
+    pl = room["players"][:]
+    random.shuffle(pl)
+    for i, p in enumerate(pl):
+        p["role"] = "spy" if i == 0 else "civil"
+        p["card"] = words[1] if i == 0 else words[0]
+        p["alive"] = True
+        p["seat"] = i
+    room["players"].sort(key=lambda x: x["seat"])
+    room["status"] = "playing"; room["phase"] = "desc"; room["round"] = 1
+    room["words"] = words; room["descs"] = []
+    return "ok", room
+
+def game_mycard(rid, key):
+    room = ROOMS.get(rid)
+    if not room:
+        return "notfound", "房间不存在"
+    p = _find(room, key)
+    if not p:
+        return "fail", "不在房间"
+    role_txt = "卧底" if p["role"] == "spy" else "平民"
+    return "ok", {"role": role_txt, "card": p["card"], "round": room["round"], "phase": room["phase"]}
+
+def game_speak(rid, key, text):
+    room = ROOMS.get(rid)
+    if not room:
+        return "notfound", "房间不存在"
+    p = _find(room, key)
+    if not p:
+        return "fail", "不在房间"
+    room["descs"].append({"uid": p["uid"], "ai_id": p["ai_id"], "name": p["name"],
+                          "seat": p["seat"], "text": (text or "")[:200]})
+    return "ok", room
+
+def game_vote(rid, key, target_key):
+    import random
+    room = ROOMS.get(rid)
+    if not room:
+        return "notfound", "房间不存在"
+    p = _find(room, key)
+    if not p:
+        return "fail", "不在房间"
+    tp = None
+    for q in room["players"]:
+        if _pkey(q) == target_key:
+            tp = q
+            break
+    if not tp or not tp["alive"] or not p["alive"]:
+        return "bad", "投票目标无效"
+    # 简化：被投票的人出局
+    tp["alive"] = False
+    if tp["role"] == "spy":
+        room["status"] = "ended"; room["phase"] = "result"; room["result"] = "平民胜"
+        return "ok", {"result": "平民胜", "out": tp["name"], "out_role": "卧底"}
+    alive = [q for q in room["players"] if q["alive"]]
+    if len(alive) <= 2:
+        room["status"] = "ended"; room["phase"] = "result"; room["result"] = "卧底胜"
+        return "ok", {"result": "卧底胜", "out": tp["name"], "out_role": "平民"}
+    room["round"] += 1; room["phase"] = "desc"
+    return "ok", {"result": "继续", "out": tp["name"], "out_role": "平民", "round": room["round"]}
+
+def room_reveal(rid):
+    room = ROOMS.get(rid)
+    if not room:
+        return None
+    w = room.get("words") or ("", "")
+    res = [{"uid": p["uid"], "ai_id": p["ai_id"], "name": p["name"], "alive": p["alive"],
+            "role": ("卧底" if p["role"] == "spy" else "平民"), "card": p["card"]} for p in room["players"]]
+    return {"id": room["id"], "result": room.get("result"), "civil": w[0], "spy": w[1],
+            "players": res, "descs": room.get("descs", [])}
+
+def _actor(request, data):
+    """返回 (crew, kind)。kind: human/ai/None。crew 含 uid/ai_id/name/avatar/is_ai。"""
+    uk = request.headers.get("X-User-Key", "")
+    ak = request.headers.get("X-AI-Key", "")
+    if ak:
+        with db() as c:
+            ai = ai_by_key(c, ak)
+            if not ai:
+                return None, None
+            owner = c.execute("SELECT * FROM users WHERE id=?", (ai["owner_id"],)).fetchone()
+            if not owner or owner["user_key"] != uk:
+                return None, None
+        return {"uid": owner["id"], "ai_id": ai["id"], "name": ai["name"],
+                "avatar": ai["avatar"] or "", "is_ai": True}, "ai"
+    if uk:
+        with db() as c:
+            u = user_by_key(c, uk)
+            if not u:
+                return None, None
+        return {"uid": u["id"], "ai_id": None, "name": u["name"],
+                "avatar": "", "is_ai": False}, "human"
+    return None, None
+
 # ---------------- helpers ----------------
 def to_json(status=200, **kw):
     return JSONResponse(kw, status_code=status)
@@ -511,6 +696,89 @@ async def handle(request):
                 HISTORY_WAIT[req_id]["evt"].set()
         return to_json(ok=True)
 
+    # ---- game rooms ----
+    if path == "/api/game/room" and method == "POST":
+        crew, kind = _actor(request, data)
+        if not crew:
+            return to_json(401, error="未认证")
+        action = data.get("action")
+        async with ROOM_LOCK:
+            if action == "create":
+                room = room_create(data.get("name"), data.get("game"),
+                                   data.get("max_players") or 6, crew)
+                return to_json(ok=True, room=room_status(room["id"]), room_id=room["id"])
+            rid = str(data.get("room_id") or "").strip()
+            if action == "join":
+                code, res = room_join(rid, crew)
+                if code == "notfound":
+                    return to_json(404, error="房间不存在")
+                if code == "full":
+                    return to_json(409, error="房间已满")
+                return to_json(ok=True, room=room_status(rid))
+            if action == "leave":
+                key = ("a", crew["ai_id"]) if crew["is_ai"] else ("u", crew["uid"])
+                code, msg = room_leave(rid, key)
+                return to_json(ok=(code == "ok"), error="" if code == "ok" else msg, msg=msg)
+            if action == "status":
+                st = room_status(rid)
+                if not st:
+                    return to_json(404, error="房间不存在")
+                return to_json(ok=True, room=st)
+            if action == "close":
+                key = ("a", crew["ai_id"]) if crew["is_ai"] else ("u", crew["uid"])
+                room = ROOMS.get(rid)
+                if not room:
+                    return to_json(404, error="房间不存在")
+                if room["host"] != key:
+                    return to_json(403, error="只有房主能关闭")
+                ROOMS.pop(rid, None)
+                return to_json(ok=True)
+        return to_json(400, error="未知动作")
+
+    if path == "/api/game/play" and method == "POST":
+        crew, kind = _actor(request, data)
+        if not crew:
+            return to_json(401, error="未认证")
+        action = data.get("action")
+        rid = str(data.get("room_id") or "").strip()
+        key = ("a", crew["ai_id"]) if crew["is_ai"] else ("u", crew["uid"])
+        async with ROOM_LOCK:
+            if action == "start":
+                code, res = game_start(rid)
+                if code != "ok":
+                    return to_json(400, error=res)
+                return to_json(ok=True, room=room_status(rid))
+            if action == "my_card":
+                code, res = game_mycard(rid, key)
+                if code != "ok":
+                    return to_json(400, error=res)
+                return to_json(ok=True, **res)
+            if action == "speak":
+                code, res = game_speak(rid, key, data.get("text") or "")
+                if code != "ok":
+                    return to_json(400, error=res)
+                return to_json(ok=True, room=room_status(rid))
+            if action == "vote":
+                tkey = data.get("target")
+                tk = None
+                if tkey:
+                    tkey = str(tkey)
+                    for q in (ROOMS.get(rid, {}).get("players", []) if rid in ROOMS else []):
+                        if str(q["uid"]) == tkey or str(q["ai_id"]) == tkey:
+                            tk = _pkey(q); break
+                if not tk:
+                    return to_json(400, error="缺投票目标")
+                code, res = game_vote(rid, key, tk)
+                if code != "ok":
+                    return to_json(400, error=res)
+                return to_json(ok=True, **res)
+            if action == "reveal":
+                st = room_reveal(rid)
+                if not st:
+                    return to_json(404, error="房间不存在")
+                return to_json(ok=True, **st)
+        return to_json(400, error="未知动作")
+
     # ---- admin ----
     if path == "/api/admin/users" and method == "GET":
         with db() as c:
@@ -653,6 +921,51 @@ def ai_delete_friend(friend_id: int, name: str = "") -> str:
     """删除好友并清除与该好友的聊天记录。friend_id 是好友编号，name 是好友名字。"""
     r = _call("POST", "/api/tool/delete_friend", {"target": friend_id, "name": name})
     return "OK 已删除" if r.get("ok") else r.get("error", "失败")
+
+@mcp.tool()
+def ai_game_room(action: str, room_id: str = "") -> str:
+    """游戏房间操作。action='join' 加入房间(输房间号)、'leave' 退出房间(输房间号)、'status' 查看房间状态(输房间号)。
+    返回如『加入成功 当前状态xx』『房间已满』『房间不存在』『退出成功』。"""
+    r = _call("POST", "/api/game/room", {"action": action, "room_id": room_id})
+    if not r.get("ok"):
+        return r.get("error", "失败")
+    room = r.get("room", {})
+    if action == "status":
+        pl = room.get("players", [])
+        lines = [f"房间 {room.get('name')} (ID {room.get('id')})",
+                 f"游戏: {room.get('game')}  状态: {room.get('status')}  轮次: {room.get('round')}",
+                 f"人数: {len(pl)}/{room.get('max_players')}"]
+        if pl:
+            lines.append("玩家:")
+            for p in pl:
+                tag = ("AI" if p["is_ai"] else "人") + ("[房主]" if p.get("host") else "") + ("[出局]" if not p["alive"] else "")
+                lines.append(f"  {p['name']} ({tag})")
+        return "\n".join(lines)
+    if action == "join":
+        pl = room.get("players", [])
+        return f"加入成功 当前状态: {room.get('status')}  人数: {len(pl)}/{room.get('max_players')}"
+    return r.get("msg", "成功")
+
+@mcp.tool()
+def ai_game_play(action: str, room_id: str = "", text: str = "", target: str = "") -> str:
+    """执行游戏操作。action='my_card' 看我的身份和词；'speak' 描述我的词(text)；'vote' 淘汰怀疑对象(target 填对方 uid 或 ai_id)；'reveal' 看本局结果。"""
+    r = _call("POST", "/api/game/play", {"action": action, "room_id": room_id, "text": text, "target": target})
+    if not r.get("ok"):
+        return r.get("error", "失败")
+    if action == "my_card":
+        return f"{r.get('phase')} 第{r.get('round')}轮\n身份: {r.get('role')}\n我的词: {r.get('card')}"
+    if action == "speak":
+        return "OK 已描述"
+    if action == "vote":
+        s = f"OK {r.get('out')}({r.get('out_role')}) 出局，{r.get('result')}"
+        if r.get("round"):
+            s += f"，进入第{r.get('round')}轮"
+        return s
+    if action == "reveal":
+        return (f"结果: {r.get('result')}\n词: 平民={r.get('civil')} 卧底={r.get('spy')}\n"
+                + "\n".join(f"{p['name']}: {p['role']} {p['card']} {'[出局]' if not p['alive'] else ''}"
+                            for p in r.get("players", [])))
+    return "OK"
 
 # ---------------- app ----------------
 def make_app():
