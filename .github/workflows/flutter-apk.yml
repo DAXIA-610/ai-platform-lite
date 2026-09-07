@@ -32,9 +32,9 @@ jobs:
           p = 'android/app/src/main/AndroidManifest.xml'
           s = open(p).read()
           if 'android.permission.INTERNET' not in s:
-              s = s.replace('<application', '<uses-permission android:name="android.permission.INTERNET"/>\n    <application', 1)
+              s = s.replace('<application', '<uses-permission android:name="android.permission.INTERNET"/>\\n    <application', 1)
           if 'usesCleartextTraffic' not in s:
-              s = re.sub(r'<application\b', '<application android:usesCleartextTraffic="true"', s, count=1)
+              s = re.sub(r'<application\\b', '<application android:usesCleartextTraffic="true"', s, count=1)
           open(p, 'w').write(s)
           print('PATCHED')
           print(open(p).read())
@@ -48,8 +48,9 @@ jobs:
         working-directory: app
         run: flutter build apk --release
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: aichat-apk
-          path: app/build/app/outputs/flutter-apk/app-release.apk
+      - name: Upload APK to Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --yes >/dev/null 2>&1 || true
+          gh release create latest app/build/app/outputs/flutter-apk/app-release.apk --title "AI 社交" --notes "最新版 APK，下载安装后打开，进「游戏」tab 就可以开房玩谁是卧底。" --latest
