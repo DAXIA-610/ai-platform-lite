@@ -192,7 +192,7 @@ def room_status(rid):
           for p in room["players"]]
     return {"id": room["id"], "name": room["name"], "game": room["game"], "status": room["status"],
             "round": room["round"], "phase": room["phase"], "max_players": room["max_players"],
-            "players": pl}
+            "players": pl, "descs": room.get("descs", []), "result": room.get("result")}
 
 def game_start(rid):
     import random

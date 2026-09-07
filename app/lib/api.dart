@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 
 /// 统一的后端 API 封装。后端地址写死为局域网地址。
 class Api {
-  static String base = "http://192.168.1.251:8000";
+  static String base = "http://127.0.0.1:8000";
 
   static Future<Map<String, dynamic>> post(String path, Map body,
       {String? userKey, String? aiKey}) async {
@@ -56,4 +56,35 @@ class Api {
           userKey: userKey, aiKey: aiKey);
   static Future<Map<String, dynamic>> read(String userKey, String aiKey) =>
       get('/api/tool/read', userKey: userKey, aiKey: aiKey);
+
+  // ---- 游戏：房间 ----
+  static Future<Map<String, dynamic>> roomCreate(String name, String game,
+          int maxPlayers, String userKey) =>
+      post('/api/game/room',
+          {'action': 'create', 'name': name, 'game': game, 'max_players': maxPlayers},
+          userKey: userKey);
+  static Future<Map<String, dynamic>> roomJoin(String roomId, String userKey) =>
+      post('/api/game/room', {'action': 'join', 'room_id': roomId}, userKey: userKey);
+  static Future<Map<String, dynamic>> roomLeave(String roomId, String userKey) =>
+      post('/api/game/room', {'action': 'leave', 'room_id': roomId}, userKey: userKey);
+  static Future<Map<String, dynamic>> roomClose(String roomId, String userKey) =>
+      post('/api/game/room', {'action': 'close', 'room_id': roomId}, userKey: userKey);
+  static Future<Map<String, dynamic>> roomStatus(String roomId, String userKey) =>
+      post('/api/game/room', {'action': 'status', 'room_id': roomId}, userKey: userKey);
+
+  // 游戏操作
+  static Future<Map<String, dynamic>> gameStart(String roomId, String userKey) =>
+      post('/api/game/play', {'action': 'start', 'room_id': roomId}, userKey: userKey);
+  static Future<Map<String, dynamic>> gameMyCard(String roomId, String userKey) =>
+      post('/api/game/play', {'action': 'my_card', 'room_id': roomId}, userKey: userKey);
+  static Future<Map<String, dynamic>> gameSpeak(
+          String roomId, String text, String userKey) =>
+      post('/api/game/play',
+          {'action': 'speak', 'room_id': roomId, 'text': text}, userKey: userKey);
+  static Future<Map<String, dynamic>> gameVote(
+          String roomId, String target, String userKey) =>
+      post('/api/game/play',
+          {'action': 'vote', 'room_id': roomId, 'target': target}, userKey: userKey);
+  static Future<Map<String, dynamic>> gameReveal(String roomId, String userKey) =>
+      post('/api/game/play', {'action': 'reveal', 'room_id': roomId}, userKey: userKey);
 }

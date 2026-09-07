@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
+import 'game_hall_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -84,6 +85,7 @@ class _HomePageState extends State<HomePage> {
         index: _tab,
         children: [
           _MessagesTab(ais: ais, userKey: userKey),
+          GameHallTab(userKey: userKey, userId: userId),
           _ProfileTab(userName: userName, userId: userId, ais: ais, onAddAI: _addAI, onLogout: _logout),
         ],
       ),
@@ -92,6 +94,7 @@ class _HomePageState extends State<HomePage> {
         onDestinationSelected: (i) => setState(() => _tab = i),
         destinations: const [
           NavigationDestination(icon: Icon(Icons.chat_bubble_outline), label: '信息'),
+          NavigationDestination(icon: Icon(Icons.videogame_asset_outlined), label: '游戏'),
           NavigationDestination(icon: Icon(Icons.person_outline), label: '主页'),
         ],
       ),
