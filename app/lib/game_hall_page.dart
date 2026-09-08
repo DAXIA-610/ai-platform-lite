@@ -197,8 +197,12 @@ class _GameHallTabState extends State<GameHallTab> {
 
   Widget _roomCard() {
     final st = _room!;
-    return Card(
-      margin: EdgeInsets.zero,
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: Colors.black87, width: 1),
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: InkWell(
         onTap: _enterRoom,
         onLongPress: _onRoomLongPress,
@@ -225,8 +229,9 @@ class _GameHallTabState extends State<GameHallTab> {
   }
 
   Widget _gameCard(Map<String, dynamic> g) {
-    return Card(
+    return Container(
       margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.black87, width: 1), borderRadius: BorderRadius.circular(12)),
       child: ListTile(
         leading: CircleAvatar(backgroundColor: Colors.black, child: Icon(g['icon'], color: Colors.white)),
         title: Text(g['name'], style: const TextStyle(fontWeight: FontWeight.bold)),

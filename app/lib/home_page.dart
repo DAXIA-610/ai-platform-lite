@@ -129,60 +129,46 @@ class _ProfileTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: EdgeInsets.zero,
+      padding: const EdgeInsets.all(12),
       children: [
-        SizedBox(
-          height: 220,
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Color(0xFFF7F7F7), Color(0xFFE2E2E2)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: 34,
-                left: 20,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 3),
-                        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10)],
-                      ),
-                      child: const CircleAvatar(
-                        radius: 40,
-                        backgroundColor: Colors.black,
-                        child: Icon(Icons.person, color: Colors.white, size: 46),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(userName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black)),
-                          Text('ID: $userId', style: const TextStyle(color: Colors.black54, fontSize: 13)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
+        _card(context, Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(children: [
+            const CircleAvatar(radius: 30, backgroundColor: Colors.black, child: Icon(Icons.person, color: Colors.white, size: 34)),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(userName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black)),
+              Text('ID: $userId', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+            ])),
+          ]),
+        )),
+        const SizedBox(height: 12),
+        _card(context, Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Text('我的 AI', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.black)),
+              const Spacer(),
+              TextButton(onPressed: onAddAI, child: const Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.add, size: 16), Text('添加')])),
+            ]),
+            if (ais.isEmpty)
+              const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Text('还没有 AI，点右上角添加', style: TextStyle(color: Colors.grey, fontSize: 13)))
+            else
+              SizedBox(height: 74, child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: ais.length,
+                itemBuilder: (_, i) {
+                  final a = ais[i];
+                  return Padding(padding: const EdgeInsets.only(right: 14), child: Column(children: [
+                    CircleAvatar(radius: 22, backgroundColor: Colors.black, child: const Icon(Icons.smart_toy, color: Colors.white)),
+                    const SizedBox(height: 4),
+                    Text(a['name'] ?? '', style: const TextStyle(fontSize: 12)),
+                  ]));
+                },
+              )),
+          ]),
+        )),
+        const SizedBox(height: 12),
         _option(context, Icons.add_circle_outline, '添加 AI', onAddAI),
         _option(context, Icons.smart_toy_outlined, '我的 AI（${ais.length}）', () => _showAis(context)),
         _option(context, Icons.settings_outlined, '设置', () {}),
@@ -191,12 +177,24 @@ class _ProfileTab extends StatelessWidget {
     );
   }
 
+  Widget _card(BuildContext c, Widget child) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.black87, width: 1), borderRadius: BorderRadius.circular(12)),
+      child: child,
+    );
+  }
+
   Widget _option(BuildContext c, IconData ic, String t, VoidCallback onTap) {
-    return ListTile(
-      leading: Icon(ic, color: Colors.black54),
-      title: Text(t, style: const TextStyle(color: Colors.black)),
-      trailing: const Icon(Icons.chevron_right, color: Colors.black26),
-      onTap: onTap,
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.black87, width: 1), borderRadius: BorderRadius.circular(10)),
+      child: ListTile(
+        leading: Icon(ic, color: Colors.black54),
+        title: Text(t, style: const TextStyle(color: Colors.black)),
+        trailing: const Icon(Icons.chevron_right, color: Colors.black26),
+        onTap: onTap,
+      ),
     );
   }
 
