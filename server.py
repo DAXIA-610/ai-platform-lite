@@ -837,12 +837,30 @@ async def handle(request):
                 if code != "ok":
                     return to_json(400, error=res)
                 await _broadcast_room(rid)
+                if res.get("partial"):
+                    # 等所有人投完
+                    room = ROOMS.get(rid)
+                    deadline = time.time() + 60
+                    while room and room["phase"] == "vote" and time.time() < deadline:
+                        await asyncio.sleep(0.5)
+                    if room and room["phase"] != "vote":
+                        await _broadcast_room(rid)
+                        if room["status"] == "ended":
+                            return to_json(ok=True, result=room.get("result"), round=room.get("round"))
+                        return to_json(ok=True, result="进入第%d轮" % room.get("round", 1), round=room.get("round"))
                 return to_json(ok=True, **res)
             if action == "reveal":
                 st = room_reveal(rid)
                 if not st:
                     return to_json(404, error="房间不存在")
                 return to_json(ok=True, **st)
+            if action == "descs":
+                room = ROOMS.get(rid)
+                if not room:
+                    return to_json(404, error="房间不存在")
+                return to_json(ok=True, game=room["game"], phase=room["phase"],
+                               round=room["round"], descs=room.get("descs", []),
+                               votes=len(room.get("votes", {})))
         return to_json(400, error="未知动作")
 
     # ---- admin ----
@@ -1012,26 +1030,52 @@ def ai_game_room(action: str, room_id: str = "") -> str:
         return f"加入成功 当前状态: {room.get('status')}  人数: {len(pl)}/{room.get('max_players')}"
     return r.get("msg", "成功")
 
+GAME_RULES = {
+    "spy": "【谁是卧底】每人一个词（多半平民、1个卧底）。轮流描述自己的词（不能说破）。都描述完→投票，票最多者出局。出局是卧底→平民赢；卧底活到剩2人→卧底赢。\n\n工具用法：\n· view(game='spy', room_id) 看我的词（不显示身份，自己猜谁是卧底）\n· input(game='spy', room_id, text) 轮到我时描述自己的词\n· progress(game='spy', room_id) 看本局阶段/轮次/各人描述\n· act(game='spy', room_id, 'vote', choice=对方uid或ai_id) 投票淘汰，会等全部投完再给结果",
+}
+
 @mcp.tool()
-def ai_game_play(action: str, room_id: str = "", text: str = "", target: str = "") -> str:
-    """执行游戏操作。action='my_card' 看我的身份和词；'speak' 描述我的词(text)；'vote' 淘汰怀疑对象(target 填对方 uid 或 ai_id)；'reveal' 看本局结果。"""
-    r = _call("POST", "/api/game/play", {"action": action, "room_id": room_id, "text": text, "target": target})
+def ai_game_rules(game: str) -> str:
+    """查看某游戏规则和整套游戏工具用法。game 填游戏名（如 'spy' 谁是卧底）。"""
+    return GAME_RULES.get(game, "未知游戏：" + str(game))
+
+@mcp.tool()
+def ai_game_view(game: str, room_id: str) -> str:
+    """查看我在房间的牌（词），不显示身份，需自己推理。game 填游戏名。"""
+    r = _call("POST", "/api/game/play", {"action": "my_card", "room_id": room_id})
     if not r.get("ok"):
         return r.get("error", "失败")
-    if action == "my_card":
-        return f"{r.get('phase')} 第{r.get('round')}轮\n身份: {r.get('role')}\n我的词: {r.get('card')}"
-    if action == "speak":
-        return "OK 已描述"
-    if action == "vote":
-        s = f"OK {r.get('out')}({r.get('out_role')}) 出局，{r.get('result')}"
-        if r.get("round"):
-            s += f"，进入第{r.get('round')}轮"
-        return s
-    if action == "reveal":
-        return (f"结果: {r.get('result')}\n词: 平民={r.get('civil')} 卧底={r.get('spy')}\n"
-                + "\n".join(f"{p['name']}: {p['role']} {p['card']} {'[出局]' if not p['alive'] else ''}"
-                            for p in r.get("players", [])))
-    return "OK"
+    return f"{r.get('phase')} 第{r.get('round')}轮\n我的词：{r.get('card')}"
+
+@mcp.tool()
+def ai_game_input(game: str, room_id: str, text: str) -> str:
+    """轮到我时，描述自己的词。game 填游戏名，text 是描述内容。"""
+    r = _call("POST", "/api/game/play", {"action": "speak", "room_id": room_id, "text": text})
+    return "OK 已描述" if r.get("ok") else r.get("error", "失败")
+
+@mcp.tool()
+def ai_game_act(game: str, room_id: str, action_type: str, choice: str = "") -> str:
+    """执行游戏操作(投票)。action_type='vote'；choice 填要淘汰的对方 uid 或 ai_id。会等到本轮全部投完再返回结果。"""
+    if action_type != "vote":
+        return "未知操作：" + str(action_type)
+    r = _call("POST", "/api/game/play", {"action": "vote", "room_id": room_id, "target": choice})
+    if not r.get("ok"):
+        return r.get("error", "失败")
+    return "投票完成：" + str(r.get("result", ""))
+
+@mcp.tool()
+def ai_game_progress(game: str, room_id: str) -> str:
+    """查看本局进度：阶段、轮次、各人描述。game 填游戏名。"""
+    r = _call("POST", "/api/game/play", {"action": "descs", "room_id": room_id})
+    if not r.get("ok"):
+        return r.get("error", "失败")
+    phase = r.get("phase"); rd = r.get("round"); ds = r.get("descs", [])
+    out = f"第{rd}轮 · {phase}"
+    if phase == "vote":
+        out += f"  已投 {r.get('votes')} 票"
+    if ds:
+        out += "\n描述：\n" + "\n".join(f"{d.get('name')}: {d.get('text')}" for d in ds)
+    return out
 
 # ---------------- app ----------------
 def make_app():
