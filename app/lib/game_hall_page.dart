@@ -138,9 +138,15 @@ class _GameHallTabState extends State<GameHallTab> {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(g['name']),
-        content: Text(g['rule']),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('知道了'))],
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: Colors.black.withOpacity(0.3))),
+        title: Text(g['name'], style: const TextStyle(color: Colors.black)),
+        content: Text(g['rule'], style: const TextStyle(color: Colors.black)),
+        actions: [
+          FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('知道了')),
+        ],
       ),
     );
   }
@@ -233,7 +239,6 @@ class _GameHallTabState extends State<GameHallTab> {
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.black87, width: 1), borderRadius: BorderRadius.circular(12)),
       child: ListTile(
-        leading: CircleAvatar(backgroundColor: Colors.black, child: Icon(g['icon'], color: Colors.white)),
         title: Text(g['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text(g['rule'], maxLines: 2, overflow: TextOverflow.ellipsis),
         trailing: const Icon(Icons.chevron_right),

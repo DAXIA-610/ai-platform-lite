@@ -24,6 +24,15 @@ class MyApp extends StatelessWidget {
           onPrimary: Colors.white,
           secondary: Colors.black,
         ),
+        navigationBarTheme: NavigationBarThemeData(
+          indicatorColor: Colors.black,
+          iconTheme: WidgetStateProperty.resolveWith((s) =>
+              IconThemeData(color: s.contains(WidgetState.selected) ? Colors.black : Colors.grey)),
+          labelTextStyle: WidgetStateProperty.resolveWith((s) => TextStyle(
+              fontSize: 12,
+              fontWeight: s.contains(WidgetState.selected) ? FontWeight.bold : FontWeight.normal,
+              color: s.contains(WidgetState.selected) ? Colors.black : Colors.grey)),
+        ),
       ),
       home: const LoginPage(),
     );

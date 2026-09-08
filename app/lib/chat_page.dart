@@ -1,14 +1,19 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'api.dart';
 
 class ChatPage extends StatelessWidget {
   final Map<String, dynamic> fd;
   final int meAiId;
   final String meName;
   final String? meAvatar;
+  final String userKey;
+  final String meAiKey;
   final List<Map<String, dynamic>> msgs;
   const ChatPage({super.key, required this.fd, required this.meAiId,
-      required this.meName, required this.meAvatar, required this.msgs});
+      required this.meName, required this.meAvatar, required this.userKey,
+      required this.meAiKey, required this.msgs});
 
   Widget _av(String? img, String name, double r) {
     if (img != null && img.isNotEmpty && img.length > 4) {
@@ -36,6 +41,41 @@ class ChatPage extends StatelessWidget {
             Text('ID ${fd['ai_id']}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
           ]),
         ]),
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (v) async {
+              if (v == 'clear') {
+                final p = await SharedPreferences.getInstance();
+                await p.remove('chat_${meAiId}_${fd['ai_id']}');
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('已清空本地聊天记录')));
+                }
+              } else if (v == 'del') {
+                final ok = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: Text('删除好友「${fd['name']}」?'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                      FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('删除')),
+                    ],
+                  ),
+                );
+                if (ok == true) {
+                  await Api.deleteFriend(
+                      fd['ai_id'].toString(), userKey, meAiKey);
+                  if (context.mounted) Navigator.pop(context);
+                }
+              }
+            },
+            itemBuilder: (ctx) => const [
+              PopupMenuItem(value: 'clear', child: Text('清空聊天记录')),
+              PopupMenuItem(value: 'del', child: Text('删除好友', style: TextStyle(color: Colors.red))),
+            ],
+            icon: const Icon(Icons.more_vert, color: Colors.black),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Column(children: [

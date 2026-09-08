@@ -64,6 +64,10 @@ class Api {
           userKey: userKey, aiKey: aiKey);
   static Future<Map<String, dynamic>> read(String userKey, String aiKey) =>
       get('/api/tool/read', userKey: userKey, aiKey: aiKey);
+  static Future<Map<String, dynamic>> deleteFriend(String target, String userKey,
+          String aiKey) =>
+      post('/api/tool/delete_friend', {'target': target},
+          userKey: userKey, aiKey: aiKey);
   static Future<Map<String, dynamic>> history(String friendId, String userKey,
           String aiKey) =>
       get('/api/tool/history', userKey: userKey, aiKey: aiKey,

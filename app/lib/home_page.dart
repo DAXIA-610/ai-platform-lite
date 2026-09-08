@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api.dart';
@@ -195,9 +196,9 @@ class _HomePageState extends State<HomePage> {
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         onDestinationSelected: (i) => setState(() => _tab = i),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined, color: Colors.grey), selectedIcon: Icon(Icons.home, color: Colors.black), label: '主页'),
-          NavigationDestination(icon: Icon(Icons.chat_bubble_outline, color: Colors.grey), selectedIcon: Icon(Icons.chat_bubble, color: Colors.black), label: '消息'),
-          NavigationDestination(icon: Icon(Icons.videogame_asset_outlined, color: Colors.grey), selectedIcon: Icon(Icons.videogame_asset, color: Colors.black), label: '游戏'),
+          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: '主页'),
+          NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: '消息'),
+          NavigationDestination(icon: Icon(Icons.videogame_asset_outlined), selectedIcon: Icon(Icons.videogame_asset), label: '游戏'),
         ],
       ),
     );
@@ -267,7 +268,17 @@ class _HomeTab extends StatelessWidget {
           ])),
         ]),
         const SizedBox(height: 8),
-        Text('key：${a['ai_key']}', style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Color(0xFF008877)), maxLines: 1, overflow: TextOverflow.ellipsis),
+        GestureDetector(
+          onLongPress: () {
+            Clipboard.setData(ClipboardData(text: a['ai_key']));
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制 key')));
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Text('key：${a['ai_key']}',
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Color(0xFF008877))),
+          ),
+        ),
         const SizedBox(height: 10),
         Row(children: [
           Expanded(child: OutlinedButton(onPressed: () => state._renameAI(a), child: const Text('改名'))),
@@ -312,7 +323,8 @@ class _MessagesTabState extends State<_MessagesTab> {
     if (!context.mounted) return;
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => ChatPage(
-          fd: fd, meAiId: _sel!['id'] as int, meName: _sel!['name'], meAvatar: _sel!['avatar'], msgs: msgs)));
+          fd: fd, meAiId: _sel!['id'] as int, meName: _sel!['name'], meAvatar: _sel!['avatar'],
+          userKey: widget.userKey, meAiKey: _sel!['ai_key'] as String, msgs: msgs)));
   }
 
   @override
@@ -342,13 +354,20 @@ class _MessagesTabState extends State<_MessagesTab> {
                 itemCount: _fds.length,
                 itemBuilder: (_, i) {
                   final f = _fds[i];
-                  return Card(
+                  final img = (f['avatar'] as String? ?? '');
+                  final av = (img.isNotEmpty && img.length > 4)
+                      ? CircleAvatar(radius: 22, backgroundColor: Colors.black,
+                          backgroundImage: MemoryImage(base64Decode(img.split(',').last)))
+                      : CircleAvatar(radius: 22, backgroundColor: Colors.black,
+                          child: Text(((f['name'] ?? 'S').toString().isEmpty ? 'S' : f['name'].toString()[0]),
+                              style: const TextStyle(color: Colors.white, fontSize: 16)));
+                  return Container(
                     margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: Colors.black.withOpacity(0.3))),
+                    decoration: BoxDecoration(color: Colors.white,
+                        border: Border.all(color: Colors.black.withOpacity(0.3)),
+                        borderRadius: BorderRadius.circular(14)),
                     child: ListTile(
-                      leading: CircleAvatar(backgroundColor: Colors.black,
-                          child: Icon(Icons.smart_toy, color: Colors.white, size: 18)),
+                      leading: av,
                       title: Text(f['name'], style: const TextStyle(color: Colors.black)),
                       subtitle: Text(f['ai_id'].toString(), style: const TextStyle(color: Colors.grey, fontSize: 12)),
                       trailing: const Icon(Icons.chevron_right, color: Colors.black26),
