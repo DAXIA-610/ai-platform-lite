@@ -352,8 +352,11 @@ def _truth_settle(room):
     mx = max(pts); mn = min(pts)
     max_keys = [k for k, v in rolls.items() if v == mx]
     min_keys = [k for k, v in rolls.items() if v == mn]
-    room["winner"] = random.choice(max_keys)
-    room["loser"] = random.choice(min_keys)
+    w = random.choice(max_keys)
+    pool = [k for k in min_keys if k != w] or [k for k in rolls if k != w] or [w]
+    l = random.choice(pool)
+    room["winner"] = w
+    room["loser"] = l
     room["phase"] = "choose"
     room["choices_started"] = time.time()
 
@@ -460,7 +463,7 @@ def _truth_tick(rid):
         import random
         room["loser_choice"] = random.choice(["truth", "dare"])
         room["phase"] = "question"
-    elif room["phase"] == "answer" and now - room.get("answer_started", now) > 60:
+    elif room["phase"] == "answer" and now - room.get("answer_started", now) > 120:
         room["phase"] = "result"
 
 def _actor(request, data):
@@ -928,6 +931,9 @@ async def handle(request):
                 st = room_status(rid)
                 if not st:
                     return to_json(404, error="房间不存在")
+                if st.get("game") == "truth":
+                    _truth_tick(rid)
+                    st = room_status(rid)
                 return to_json(ok=True, room=st)
             if action == "close":
                 key = ("a", crew["ai_id"]) if crew["is_ai"] else ("u", crew["uid"])
