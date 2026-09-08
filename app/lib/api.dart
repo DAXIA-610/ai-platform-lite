@@ -111,4 +111,11 @@ class Api {
           {'action': 'vote', 'room_id': roomId, 'target': target}, userKey: userKey);
   static Future<Map<String, dynamic>> gameReveal(String roomId, String userKey) =>
       post('/api/game/play', {'action': 'reveal', 'room_id': roomId}, userKey: userKey);
+
+  // 真心话大冒险
+  static Future<Map<String, dynamic>> truthOp(String roomId, String action,
+          String userKey, {String choice = '', String text = ''}) =>
+      post('/api/game/play',
+          {'action': action, 'room_id': roomId, 'choice': choice, 'text': text},
+          userKey: userKey);
 }

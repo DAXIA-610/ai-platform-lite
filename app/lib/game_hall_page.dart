@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'api.dart';
 import 'spy_room_page.dart';
+import 'truth_room_page.dart';
 
 class GameHallTab extends StatefulWidget {
   final String userKey;
@@ -18,6 +19,12 @@ class _GameHallTabState extends State<GameHallTab> {
       'icon': Icons.visibility,
       'rule': '每人一个词（多数平民、少数卧底）。轮流描述自己的词（不能说破），每轮投票淘汰一个最像卧底的人。卧底被揪出→平民胜；卧底活到最后→卧底胜。',
     },
+    {
+      'id': 'truth',
+      'name': '真心话大冒险',
+      'icon': Icons.casino,
+      'rule': '全员摇骰子，点数最大=赢家、最小=输家。输家选真心话或大冒险，赢家出题，输家回答/执行。',
+    },
   ];
   Map<String, dynamic>? _room;
   bool _busy = false;
@@ -25,6 +32,7 @@ class _GameHallTabState extends State<GameHallTab> {
   Future<void> _create() async {
     final nameC = TextEditingController();
     int maxP = 6;
+    String game = 'spy';
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -36,11 +44,11 @@ class _GameHallTabState extends State<GameHallTab> {
               TextField(controller: nameC, decoration: const InputDecoration(labelText: '房间名')),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: 'spy',
+                value: game,
                 items: _games
                     .map((x) => DropdownMenuItem<String>(value: x['id'] as String, child: Text(x['name'] as String)))
                     .toList(),
-                onChanged: (_) {},
+                onChanged: (v) { if (v != null) { game = v; st(() {}); } },
                 decoration: const InputDecoration(labelText: '游戏'),
               ),
               const SizedBox(height: 12),
@@ -63,7 +71,7 @@ class _GameHallTabState extends State<GameHallTab> {
     );
     if (ok != true) return;
     setState(() => _busy = true);
-    final r = await Api.roomCreate(nameC.text.trim(), 'spy', maxP, widget.userKey);
+    final r = await Api.roomCreate(nameC.text.trim(), game, maxP, widget.userKey);
     setState(() => _busy = false);
     if (r['room'] == null) { _toast(r['error'] ?? '创建失败'); return; }
     setState(() => _room = r['room']);
@@ -93,13 +101,15 @@ class _GameHallTabState extends State<GameHallTab> {
   void _enterRoom() {
     final rid = _room?['id'];
     if (rid == null) return;
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => SpyRoomPage(
-        roomId: rid,
-        userKey: widget.userKey,
-        userId: widget.userId,
-      ),
-    )).then((_) async {
+    final game = _room?['game'] ?? 'spy';
+    final Widget page = game == 'truth'
+        ? TruthRoomPage(roomId: rid, userKey: widget.userKey, userId: widget.userId)
+        : SpyRoomPage(
+            roomId: rid,
+            userKey: widget.userKey,
+            userId: widget.userId,
+          );
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => page)).then((_) async {
       if (!mounted) return;
       final r = await Api.roomStatus(rid, widget.userKey);
       if (r['room'] != null) { setState(() => _room = r['room']); }

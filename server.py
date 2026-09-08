@@ -193,7 +193,8 @@ def room_status(rid):
     return {"id": room["id"], "name": room["name"], "game": room["game"], "status": room["status"],
             "round": room["round"], "phase": room["phase"], "max_players": room["max_players"],
             "players": pl, "descs": room.get("descs", []), "result": room.get("result"),
-            "rolls": room.get("rolls"), "winner": room.get("winner"), "loser": room.get("loser"),
+            "rolls": [{"k": list(k), "v": v} for k, v in (room.get("rolls") or {}).items()],
+            "winner": room.get("winner"), "loser": room.get("loser"),
             "loser_choice": room.get("loser_choice"), "question": room.get("question"),
             "answer": room.get("answer"), "dare": room.get("dare")}
 
@@ -439,7 +440,8 @@ def truth_progress(rid):
     if not room:
         return None
     return {"game": "truth", "phase": room["phase"], "round": room["round"],
-            "rolls": room.get("rolls"), "winner": room["winner"], "loser": room["loser"],
+            "rolls": [{"k": list(k), "v": v} for k, v in (room.get("rolls") or {}).items()],
+            "winner": room["winner"], "loser": room["loser"],
             "loser_choice": room.get("loser_choice"), "question": room.get("question"),
             "answer": room.get("answer"), "dare": room.get("dare")}
 
@@ -1308,7 +1310,11 @@ def ai_game_progress(game: str, room_id: str) -> str:
         names = {_pkey(p): p["name"] for p in room["players"]} if room else {}
         out = f"第{r.get('round')}轮 · {r.get('phase')}"
         if r.get("rolls"):
-            out += "\n点数：" + "\n".join(f"{names.get(k, k)} {v}" for k, v in r.get("rolls", {}).items())
+            lines = []
+            for item in r["rolls"]:
+                k = item["k"]; v = item["v"]
+                lines.append(f"{names.get(tuple(k), k)} {v}")
+            out += "\n点数：\n" + "\n".join(lines)
         if r.get("winner"):
             out += "\n赢家：" + str(names.get(r.get("winner"), r.get("winner"))) + "  输家：" + str(names.get(r.get("loser"), r.get("loser")))
         if r.get("loser_choice"):
