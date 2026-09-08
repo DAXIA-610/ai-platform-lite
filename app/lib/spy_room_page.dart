@@ -181,17 +181,31 @@ class _SpyRoomPageState extends State<SpyRoomPage> {
     if (card == null) {
       inner = const Text('游戏开始后可看到我的词', style: TextStyle(color: Colors.grey));
     } else {
-      inner = Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+      final phase = card['phase'];
+      String stage = '';
+      if (phase == 'desc') stage = '轮到「${card['turn_name']}」描述';
+      else if (phase == 'vote') stage = '投票阶段，点别人头像';
+      else if (phase == 'result') stage = '本局已结束';
+      inner = Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text('我是 ${card['role']}',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black)),
-          const SizedBox(width: 16),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(20)),
-            child: Text('词：${card['card']}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('我是 ${card['role']}',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black)),
+              const SizedBox(width: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(20)),
+                child: Text('词：${card['card']}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ],
           ),
+          if (stage.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(stage, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          ],
         ],
       );
     }
@@ -219,9 +233,10 @@ class _SpyRoomPageState extends State<SpyRoomPage> {
             spacing: 10,
             runSpacing: 10,
             children: players.map((p) {
-              final canVote = status == 'playing' && p['alive'] == true && (p['is_ai'] != true || p['uid']?.toString() != widget.userId) && (p['is_ai'] == false ? p['uid']?.toString() != widget.userId : true);
+              final isMe = p['is_ai'] != true && p['uid']?.toString() == widget.userId;
+              final canVote = status == 'playing' && _card != null && _card!['phase'] == 'vote' && p['alive'] == true && !isMe;
               return InkWell(
-                onTap: canVote ? () => _vote(p) : (status == 'playing' ? null : null),
+                onTap: canVote ? () => _vote(p) : null,
                 borderRadius: BorderRadius.circular(20),
                 child: Container(
                   padding: const EdgeInsets.all(8),
@@ -289,8 +304,15 @@ class _SpyRoomPageState extends State<SpyRoomPage> {
         ],
       );
     }
-    return Center(
-      child: FilledButton.icon(onPressed: _speak, icon: const Icon(Icons.chat_bubble_outline), label: const Text('描述我的词 / 投票')),
-    );
+    final phase = _card?['phase'];
+    if (phase == 'vote') {
+      return const Center(child: Text('投票阶段 · 点别人头像投票', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)));
+    }
+    final myTurn = _card?['is_my_turn'] == true;
+    if (myTurn) {
+      return Center(child: FilledButton.icon(onPressed: _speak, icon: const Icon(Icons.chat_bubble_outline), label: const Text('描述我的词')));
+    }
+    final tn = _card?['turn_name'] ?? '别人';
+    return Center(child: Text('等待 $tn 描述…', style: const TextStyle(color: Colors.grey)));
   }
 }

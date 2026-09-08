@@ -212,6 +212,11 @@ def game_start(rid):
         p["alive"] = True
         p["seat"] = i
     room["players"].sort(key=lambda x: x["seat"])
+    alive = [p for p in room["players"] if p["alive"]]
+    room["desc_players"] = [_pkey(p) for p in alive]
+    room["desc_count"] = 0
+    room["turn"] = room["desc_players"][0]
+    room["votes"] = {}
     room["status"] = "playing"; room["phase"] = "desc"; room["round"] = 1
     room["words"] = words; room["descs"] = []
     return "ok", room
@@ -224,17 +229,40 @@ def game_mycard(rid, key):
     if not p:
         return "fail", "不在房间"
     role_txt = "卧底" if p["role"] == "spy" else "平民"
-    return "ok", {"role": role_txt, "card": p["card"], "round": room["round"], "phase": room["phase"]}
+    turn_name = ""
+    is_my_turn = False
+    if room["phase"] == "desc" and room["turn"]:
+        tq = _find(room, room["turn"])
+        turn_name = tq["name"] if tq else ""
+        is_my_turn = (room["turn"] == key)
+    return "ok", {"role": role_txt, "card": p["card"], "round": room["round"],
+                  "phase": room["phase"], "turn_name": turn_name, "is_my_turn": is_my_turn}
 
 def game_speak(rid, key, text):
     room = ROOMS.get(rid)
     if not room:
         return "notfound", "房间不存在"
     p = _find(room, key)
-    if not p:
-        return "fail", "不在房间"
+    if not p or not p["alive"]:
+        return "fail", "不在房间或已出局"
+    if room["phase"] != "desc":
+        return "bad", "还不是描述阶段"
+    if room["turn"] != key:
+        return "bad", "还没轮到你描述"
     room["descs"].append({"uid": p["uid"], "ai_id": p["ai_id"], "name": p["name"],
                           "seat": p["seat"], "text": (text or "")[:200]})
+    room["desc_count"] += 1
+    dp = room["desc_players"]
+    idx = dp.index(key)
+    nxt = idx + 1
+    while nxt < len(dp):
+        q = _find(room, dp[nxt])
+        if q and q["alive"]:
+            room["turn"] = dp[nxt]
+            return "ok", room
+        nxt += 1
+    room["turn"] = None
+    room["phase"] = "vote"
     return "ok", room
 
 def game_vote(rid, key, target_key):
@@ -243,26 +271,45 @@ def game_vote(rid, key, target_key):
     if not room:
         return "notfound", "房间不存在"
     p = _find(room, key)
-    if not p:
-        return "fail", "不在房间"
-    tp = None
-    for q in room["players"]:
-        if _pkey(q) == target_key:
-            tp = q
-            break
-    if not tp or not tp["alive"] or not p["alive"]:
+    if not p or not p["alive"]:
+        return "fail", "不在房间或已出局"
+    if room["phase"] != "vote":
+        return "bad", "还不是投票阶段"
+    tp = _find(room, target_key)
+    if not tp or not tp["alive"] or _pkey(tp) == _pkey(p):
         return "bad", "投票目标无效"
-    # 简化：被投票的人出局
-    tp["alive"] = False
-    if tp["role"] == "spy":
-        room["status"] = "ended"; room["phase"] = "result"; room["result"] = "平民胜"
-        return "ok", {"result": "平民胜", "out": tp["name"], "out_role": "卧底"}
+    room["votes"][key] = target_key
     alive = [q for q in room["players"] if q["alive"]]
-    if len(alive) <= 2:
+    if len(room["votes"]) < len(alive):
+        return "ok", {"partial": True, "voted": len(room["votes"]), "round": room["round"]}
+    tally = {}
+    for tk in room["votes"].values():
+        tally.setdefault(tk, []).append(tk)
+    if not tally:
+        return "bad", "没人投票"
+    max_v = max(len(v) for v in tally.values())
+    top = [tk for tk, vs in tally.items() if len(vs) == max_v]
+    out_key = random.choice(top)
+    out = _find(room, out_key)
+    out["alive"] = False
+    out_role_txt = "卧底" if out["role"] == "spy" else "平民"
+    tally_names = {(_find(room, tk)["name"] if _find(room, tk) else str(tk)): len(vs) for tk, vs in tally.items()}
+    if out["role"] == "spy":
+        room["status"] = "ended"; room["phase"] = "result"; room["result"] = "平民胜"
+        return "ok", {"result": "平民胜", "out": out["name"], "out_role": out_role_txt, "tally": tally_names}
+    remain = [q for q in room["players"] if q["alive"]]
+    if len(remain) <= 2:
         room["status"] = "ended"; room["phase"] = "result"; room["result"] = "卧底胜"
-        return "ok", {"result": "卧底胜", "out": tp["name"], "out_role": "平民"}
-    room["round"] += 1; room["phase"] = "desc"
-    return "ok", {"result": "继续", "out": tp["name"], "out_role": "平民", "round": room["round"]}
+        return "ok", {"result": "卧底胜", "out": out["name"], "out_role": out_role_txt, "tally": tally_names}
+    room["round"] += 1
+    room["phase"] = "desc"
+    room["votes"] = {}
+    room["descs"] = []
+    room["desc_count"] = 0
+    alive = [q for q in room["players"] if q["alive"]]
+    room["desc_players"] = [_pkey(q) for q in alive]
+    room["turn"] = room["desc_players"][0]
+    return "ok", {"result": "继续", "out": out["name"], "out_role": out_role_txt, "round": room["round"], "tally": tally_names}
 
 def room_reveal(rid):
     room = ROOMS.get(rid)
