@@ -192,7 +192,10 @@ def room_status(rid):
           for p in room["players"]]
     return {"id": room["id"], "name": room["name"], "game": room["game"], "status": room["status"],
             "round": room["round"], "phase": room["phase"], "max_players": room["max_players"],
-            "players": pl, "descs": room.get("descs", []), "result": room.get("result")}
+            "players": pl, "descs": room.get("descs", []), "result": room.get("result"),
+            "rolls": room.get("rolls"), "winner": room.get("winner"), "loser": room.get("loser"),
+            "loser_choice": room.get("loser_choice"), "question": room.get("question"),
+            "answer": room.get("answer"), "dare": room.get("dare")}
 
 def game_start(rid):
     import random
@@ -320,6 +323,143 @@ def room_reveal(rid):
             "role": ("卧底" if p["role"] == "spy" else "平民"), "card": p["card"]} for p in room["players"]]
     return {"id": room["id"], "result": room.get("result"), "civil": w[0], "spy": w[1],
             "players": res, "descs": room.get("descs", [])}
+
+def _truth_point():
+    import random
+    return random.randint(1, 6)
+
+def truth_start(rid):
+    room = ROOMS.get(rid)
+    if not room:
+        return "notfound", "房间不存在"
+    if len(room["players"]) < 2:
+        return "bad", "至少2人"
+    if room.get("status") == "playing" and room.get("phase") != "result":
+        return "bad", "本局还没结束"
+    room["game"] = "truth"; room["status"] = "playing"
+    room["round"] = room.get("round", 0) + 1
+    room["phase"] = "roll"
+    room["rolls"] = {}; room["winner"] = None; room["loser"] = None
+    room["loser_choice"] = None; room["question"] = None; room["answer"] = None; room["dare"] = None
+    room["roll_started"] = time.time(); room["choices_started"] = time.time(); room["answer_started"] = time.time()
+    return "ok", room
+
+def _truth_settle(room):
+    import random
+    rolls = room["rolls"]
+    pts = list(rolls.values())
+    mx = max(pts); mn = min(pts)
+    max_keys = [k for k, v in rolls.items() if v == mx]
+    min_keys = [k for k, v in rolls.items() if v == mn]
+    room["winner"] = random.choice(max_keys)
+    room["loser"] = random.choice(min_keys)
+    room["phase"] = "choose"
+    room["choices_started"] = time.time()
+
+def truth_roll(rid, key):
+    room = ROOMS.get(rid)
+    if not room:
+        return "notfound", "房间不存在"
+    if room["phase"] != "roll":
+        return "bad", "还不是摇骰阶段"
+    if key in room["rolls"]:
+        return "ok", room
+    p = _find(room, key)
+    if not p:
+        return "fail", "不在房间"
+    room["rolls"][key] = _truth_point()
+    if len(room["rolls"]) >= len(room["players"]):
+        _truth_settle(room)
+    return "ok", room
+
+def truth_choose(rid, key, choice):
+    room = ROOMS.get(rid)
+    if not room:
+        return "notfound", "房间不存在"
+    if room["phase"] != "choose":
+        return "bad", "还不是选择阶段"
+    if key != room["loser"]:
+        return "bad", "你不是输家"
+    room["loser_choice"] = "dare" if choice in (1, "1", "dare") else "truth"
+    room["phase"] = "question"
+    room["question"] = None; room["answer"] = None; room["dare"] = None
+    return "ok", room
+
+def truth_question(rid, key, text):
+    room = ROOMS.get(rid)
+    if not room:
+        return "notfound", "房间不存在"
+    if room["phase"] != "question":
+        return "bad", "还不是出题阶段"
+    if key != room["winner"]:
+        return "bad", "你不是赢家"
+    room["question"] = (text or "")[:500]
+    room["phase"] = "answer"; room["answer_started"] = time.time()
+    return "ok", room
+
+def truth_answer(rid, key, text):
+    room = ROOMS.get(rid)
+    if not room:
+        return "notfound", "房间不存在"
+    if room["phase"] != "answer" or room["loser_choice"] != "truth":
+        return "bad", "还不是回答阶段"
+    if key != room["loser"]:
+        return "bad", "你不是输家"
+    room["answer"] = (text or "")[:500]
+    room["phase"] = "result"
+    return "ok", room
+
+def truth_do(rid, key, val):
+    room = ROOMS.get(rid)
+    if not room:
+        return "notfound", "房间不存在"
+    if room["phase"] != "answer" or room["loser_choice"] != "dare":
+        return "bad", "还不是执行阶段"
+    if key != room["loser"]:
+        return "bad", "你不是输家"
+    room["dare"] = "done" if val in (0, "0") else "later"  # 我已执行=0, 稍后执行=1
+    room["phase"] = "result"
+    return "ok", room
+
+def truth_view(rid, key):
+    room = ROOMS.get(rid)
+    if not room:
+        return "notfound", "房间不存在"
+    p = _find(room, key)
+    if not p:
+        return "fail", "不在房间"
+    return "ok", {"phase": room["phase"], "round": room["round"],
+                   "point": room["rolls"].get(key), "winner": room["winner"], "loser": room["loser"],
+                   "is_winner": room["winner"] == key, "is_loser": room["loser"] == key,
+                   "loser_choice": room.get("loser_choice"), "question": room.get("question"),
+                   "answer": room.get("answer"), "dare": room.get("dare")}
+
+def truth_progress(rid):
+    room = ROOMS.get(rid)
+    if not room:
+        return None
+    return {"game": "truth", "phase": room["phase"], "round": room["round"],
+            "rolls": room.get("rolls"), "winner": room["winner"], "loser": room["loser"],
+            "loser_choice": room.get("loser_choice"), "question": room.get("question"),
+            "answer": room.get("answer"), "dare": room.get("dare")}
+
+def _truth_tick(rid):
+    room = ROOMS.get(rid)
+    if not room or room.get("game") != "truth":
+        return
+    now = time.time()
+    if room["phase"] == "roll" and now - room.get("roll_started", now) > 60:
+        for q in room["players"]:
+            k = _pkey(q)
+            if k not in room["rolls"]:
+                room["rolls"][k] = _truth_point()
+        _truth_settle(room)
+    elif room["phase"] == "choose" and now - room.get("choices_started", now) > 60:
+        import random
+        room["loser_choice"] = random.choice(["truth", "dare"])
+        room["phase"] = "question"
+    elif room["phase"] == "answer" and now - room.get("answer_started", now) > 60:
+        room["phase"] = "result"
 
 def _actor(request, data):
     """返回 (crew, kind)。kind: human/ai/None。crew 含 uid/ai_id/name/avatar/is_ai。"""
@@ -806,6 +946,66 @@ async def handle(request):
         rid = str(data.get("room_id") or "").strip()
         key = ("a", crew["ai_id"]) if crew["is_ai"] else ("u", crew["uid"])
         async with ROOM_LOCK:
+            _g = (ROOMS.get(rid, {}) or {}).get("game", "spy")
+            if _g == "truth":
+                _truth_tick(rid)
+                if action == "start":
+                    code, res = truth_start(rid)
+                    if code != "ok":
+                        return to_json(400, error=res)
+                    await _broadcast_room(rid)
+                    return to_json(ok=True, room=room_status(rid))
+                if action == "roll":
+                    code, res = truth_roll(rid, key)
+                    if code != "ok":
+                        return to_json(400, error=res)
+                    await _broadcast_room(rid)
+                    _truth_tick(rid)
+                    return to_json(ok=True, room=room_status(rid))
+                if action == "choose":
+                    code, res = truth_choose(rid, key, data.get("choice"))
+                    if code != "ok":
+                        return to_json(400, error=res)
+                    await _broadcast_room(rid)
+                    room = ROOMS.get(rid)
+                    deadline = time.time() + 90
+                    while room and room["phase"] == "question" and not room.get("question") and time.time() < deadline:
+                        await asyncio.sleep(0.5)
+                    if room:
+                        return to_json(ok=True, choice=room.get("loser_choice"), question=room.get("question"))
+                    return to_json(ok=True)
+                if action == "do":
+                    code, res = truth_do(rid, key, data.get("choice"))
+                    if code != "ok":
+                        return to_json(400, error=res)
+                    await _broadcast_room(rid)
+                    return to_json(ok=True)
+                if action == "input":
+                    txt = data.get("text") or ""
+                    room = ROOMS.get(rid)
+                    if not room:
+                        return to_json(404, error="房间不存在")
+                    if room["phase"] == "question" and room["winner"] == key:
+                        code, res = truth_question(rid, key, txt)
+                    elif room["phase"] == "answer" and room["loser"] == key and room.get("loser_choice") == "truth":
+                        code, res = truth_answer(rid, key, txt)
+                    else:
+                        return to_json(400, error="现在不能输入")
+                    if code != "ok":
+                        return to_json(400, error=res)
+                    await _broadcast_room(rid)
+                    return to_json(ok=True)
+                if action == "view":
+                    code, res = truth_view(rid, key)
+                    if code != "ok":
+                        return to_json(400, error=res)
+                    return to_json(ok=True, **res)
+                if action == "descs":
+                    pr = truth_progress(rid)
+                    if not pr:
+                        return to_json(404, error="房间不存在")
+                    return to_json(ok=True, **pr)
+                return to_json(400, error="未知动作")
             if action == "start":
                 code, res = game_start(rid)
                 if code != "ok":
@@ -1032,6 +1232,7 @@ def ai_game_room(action: str, room_id: str = "") -> str:
 
 GAME_RULES = {
     "spy": "【谁是卧底】每人一个词（多半平民、1个卧底）。轮流描述自己的词（不能说破）。都描述完→投票，票最多者出局。出局是卧底→平民赢；卧底活到剩2人→卧底赢。\n\n工具用法：\n· view(game='spy', room_id) 看我的词（不显示身份，自己猜谁是卧底）\n· input(game='spy', room_id, text) 轮到我时描述自己的词\n· progress(game='spy', room_id) 看本局阶段/轮次/各人描述\n· act(game='spy', room_id, 'vote', choice=对方uid或ai_id) 投票淘汰，会等全部投完再给结果",
+    "truth": "【真心话大冒险】全员摇骰子，点数最大=赢家、最小=输家（同点随机）。输家选真心话(0)或大冒险(1)；赢家出题；真心话→输家回答；大冒险→输家选「稍后执行(1)/我已执行(0)」。\n\n工具用法：\n· act(game='truth', room_id, 'roll') 摇骰子，返回点数/谁赢谁输\n· act(game='truth', room_id, 'choose', choice=0真心话|1大冒险) 输家选，会等赢家出题后返回题目\n· act(game='truth', room_id, 'do', choice=1稍后执行|0我已执行) 大冒险选择\n· input(game='truth', room_id, text) 赢家出题/输家真心话回答(不返回结果，用 view 看)\n· view(game='truth', room_id) 看自己状态(点数/赢输/类型/问题/回答)\n· progress(game='truth', room_id) 看房间进度(点数/输赢/选择/问题/回答)",
 }
 
 @mcp.tool()
@@ -1042,6 +1243,24 @@ def ai_game_rules(game: str) -> str:
 @mcp.tool()
 def ai_game_view(game: str, room_id: str) -> str:
     """全游戏通用 · 查看自己的游戏状态/牌(词)，不显示身份、需自己推理。先看规则确认参数。game=游戏名，room_id=房间号。"""
+    if game == "truth":
+        r = _call("POST", "/api/game/play", {"action": "view", "room_id": room_id})
+        if not r.get("ok"):
+            return r.get("error", "失败")
+        s = f"第{r.get('round')}轮 · {r.get('phase')}\n我的点数：{r.get('point')}"
+        if r.get("is_winner"): s += "  【你赢了】"
+        if r.get("is_loser"): s += "  【你输了】"
+        if r.get("question"):
+            s += f"\n题目：{r.get('question')}"
+        elif r.get("phase") == "answer" and r.get("is_loser"):
+            s += "\n（题目还没出，等待赢家提问）"
+        else:
+            s += "\n（还没提问）"
+        if r.get("answer"):
+            s += f"\n回答：{r.get('answer')}"
+        elif r.get("is_loser"):
+            s += "\n（还没回答）"
+        return s
     r = _call("POST", "/api/game/play", {"action": "my_card", "room_id": room_id})
     if not r.get("ok"):
         return r.get("error", "失败")
@@ -1049,13 +1268,28 @@ def ai_game_view(game: str, room_id: str) -> str:
 
 @mcp.tool()
 def ai_game_input(game: str, room_id: str, text: str) -> str:
-    """全游戏通用 · 在游戏里输入文字(如描述自己的词)。先看规则确认参数。game=游戏名，room_id=房间号，text=内容。"""
-    r = _call("POST", "/api/game/play", {"action": "speak", "room_id": room_id, "text": text})
-    return "OK 已描述" if r.get("ok") else r.get("error", "失败")
+    """全游戏通用 · 在游戏里输入文字。先看规则确认参数。game=游戏名，room_id=房间号，text=内容。"""
+    action = "input" if game == "truth" else "speak"
+    r = _call("POST", "/api/game/play", {"action": action, "room_id": room_id, "text": text})
+    return "OK 已输入" if r.get("ok") else r.get("error", "失败")
 
 @mcp.tool()
 def ai_game_act(game: str, room_id: str, action_type: str, choice: str = "") -> str:
-    """全游戏通用 · 执行游戏操作(如投票)。先看规则确认参数。game=游戏名，action_type=操作类型(如 vote)，choice=选择(可空，投票填对方id)。"""
+    """全游戏通用 · 执行游戏操作。先看规则确认参数。game=游戏名，action_type=操作类型(如 vote/roll/choose/do)，choice=选择(可空)。"""
+    if game == "truth":
+        if action_type == "roll":
+            r = _call("POST", "/api/game/play", {"action": "roll", "room_id": room_id})
+            if not r.get("ok"): return r.get("error", "失败")
+            return "OK 已摇骰"
+        if action_type == "choose":
+            r = _call("POST", "/api/game/play", {"action": "choose", "room_id": room_id, "choice": choice})
+            if not r.get("ok"): return r.get("error", "失败")
+            return "你选择：" + ("真心话" if str(r.get("choice")) == "truth" else "大冒险") + "\n题目：" + str(r.get("question"))
+        if action_type == "do":
+            r = _call("POST", "/api/game/play", {"action": "do", "room_id": room_id, "choice": choice})
+            if not r.get("ok"): return r.get("error", "失败")
+            return "OK 已选择"
+        return "未知操作：" + str(action_type)
     if action_type != "vote":
         return "未知操作：" + str(action_type)
     r = _call("POST", "/api/game/play", {"action": "vote", "room_id": room_id, "target": choice})
@@ -1065,10 +1299,23 @@ def ai_game_act(game: str, room_id: str, action_type: str, choice: str = "") -> 
 
 @mcp.tool()
 def ai_game_progress(game: str, room_id: str) -> str:
-    """全游戏通用 · 查看游戏进度与情况(阶段/轮次/各人描述)。先看规则确认参数。game=游戏名，room_id=房间号。"""
+    """全游戏通用 · 查看游戏进度与情况。先看规则确认参数。game=游戏名，room_id=房间号。"""
     r = _call("POST", "/api/game/play", {"action": "descs", "room_id": room_id})
     if not r.get("ok"):
         return r.get("error", "失败")
+    if game == "truth":
+        room = ROOMS.get(room_id)
+        names = {_pkey(p): p["name"] for p in room["players"]} if room else {}
+        out = f"第{r.get('round')}轮 · {r.get('phase')}"
+        if r.get("rolls"):
+            out += "\n点数：" + "\n".join(f"{names.get(k, k)} {v}" for k, v in r.get("rolls", {}).items())
+        if r.get("winner"):
+            out += "\n赢家：" + str(names.get(r.get("winner"), r.get("winner"))) + "  输家：" + str(names.get(r.get("loser"), r.get("loser")))
+        if r.get("loser_choice"):
+            out += "\n输家选择：" + ("真心话" if r.get("loser_choice") == "truth" else "大冒险")
+        if r.get("question"): out += "\n问题：" + str(r.get("question"))
+        if r.get("answer"): out += "\n回答：" + str(r.get("answer"))
+        return out
     phase = r.get("phase"); rd = r.get("round"); ds = r.get("descs", [])
     out = f"第{rd}轮 · {phase}"
     if phase == "vote":
