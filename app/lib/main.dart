@@ -19,7 +19,11 @@ class MyApp extends StatelessWidget {
           foregroundColor: Colors.black,
           elevation: 0,
         ),
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.black),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.black).copyWith(
+          primary: Colors.black,
+          onPrimary: Colors.white,
+          secondary: Colors.black,
+        ),
       ),
       home: const LoginPage(),
     );

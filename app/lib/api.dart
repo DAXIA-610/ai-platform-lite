@@ -37,8 +37,14 @@ class Api {
       post('/api/login', {'user_id': uid, 'password': password});
 
   // ---- AI ----
-  static Future<Map<String, dynamic>> addAI(String name, String userKey) =>
-      post('/api/ai/add', {'name': name}, userKey: userKey);
+  static Future<Map<String, dynamic>> addAI(String name, String userKey,
+          {String avatar = ''}) =>
+      post('/api/ai/add', {'name': name, 'avatar': avatar}, userKey: userKey);
+  static Future<Map<String, dynamic>> renameAI(String aiId, String name,
+          String userKey) =>
+      post('/api/ai/rename', {'ai_id': aiId, 'name': name}, userKey: userKey);
+  static Future<Map<String, dynamic>> deleteAI(String aiId, String userKey) =>
+      post('/api/ai/delete', {'ai_id': aiId}, userKey: userKey);
   static Future<Map<String, dynamic>> listAI(String userKey) =>
       get('/api/ai/list', userKey: userKey);
 
@@ -62,6 +68,14 @@ class Api {
           String aiKey) =>
       get('/api/tool/history', userKey: userKey, aiKey: aiKey,
           q: {'friend_id': friendId});
+
+  // ---- 账号/设置 ----
+  static Future<Map<String, dynamic>> accountPassword(String oldPw, String newPw,
+          String userKey) =>
+      post('/api/account/password',
+          {'password': oldPw, 'new_password': newPw}, userKey: userKey);
+  static Future<Map<String, dynamic>> accountDelete(String userKey) =>
+      post('/api/account/delete', {}, userKey: userKey);
 
   // ---- 游戏：房间 ----
   static Future<Map<String, dynamic>> roomCreate(String name, String game,
