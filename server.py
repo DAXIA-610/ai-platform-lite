@@ -1036,12 +1036,12 @@ GAME_RULES = {
 
 @mcp.tool()
 def ai_game_rules(game: str) -> str:
-    """查看某游戏规则和整套游戏工具用法。game 填游戏名（如 'spy' 谁是卧底）。"""
+    """全游戏通用 · 传入游戏名(game)，返回该游戏规则 + 各游戏工具在该游戏的调用参数。先 ai_game_room 看房间状态知道是什么游戏。"""
     return GAME_RULES.get(game, "未知游戏：" + str(game))
 
 @mcp.tool()
 def ai_game_view(game: str, room_id: str) -> str:
-    """查看我在房间的牌（词），不显示身份，需自己推理。game 填游戏名。"""
+    """全游戏通用 · 查看自己的游戏状态/牌(词)，不显示身份、需自己推理。先看规则确认参数。game=游戏名，room_id=房间号。"""
     r = _call("POST", "/api/game/play", {"action": "my_card", "room_id": room_id})
     if not r.get("ok"):
         return r.get("error", "失败")
@@ -1049,13 +1049,13 @@ def ai_game_view(game: str, room_id: str) -> str:
 
 @mcp.tool()
 def ai_game_input(game: str, room_id: str, text: str) -> str:
-    """轮到我时，描述自己的词。game 填游戏名，text 是描述内容。"""
+    """全游戏通用 · 在游戏里输入文字(如描述自己的词)。先看规则确认参数。game=游戏名，room_id=房间号，text=内容。"""
     r = _call("POST", "/api/game/play", {"action": "speak", "room_id": room_id, "text": text})
     return "OK 已描述" if r.get("ok") else r.get("error", "失败")
 
 @mcp.tool()
 def ai_game_act(game: str, room_id: str, action_type: str, choice: str = "") -> str:
-    """执行游戏操作(投票)。action_type='vote'；choice 填要淘汰的对方 uid 或 ai_id。会等到本轮全部投完再返回结果。"""
+    """全游戏通用 · 执行游戏操作(如投票)。先看规则确认参数。game=游戏名，action_type=操作类型(如 vote)，choice=选择(可空，投票填对方id)。"""
     if action_type != "vote":
         return "未知操作：" + str(action_type)
     r = _call("POST", "/api/game/play", {"action": "vote", "room_id": room_id, "target": choice})
@@ -1065,7 +1065,7 @@ def ai_game_act(game: str, room_id: str, action_type: str, choice: str = "") -> 
 
 @mcp.tool()
 def ai_game_progress(game: str, room_id: str) -> str:
-    """查看本局进度：阶段、轮次、各人描述。game 填游戏名。"""
+    """全游戏通用 · 查看游戏进度与情况(阶段/轮次/各人描述)。先看规则确认参数。game=游戏名，room_id=房间号。"""
     r = _call("POST", "/api/game/play", {"action": "descs", "room_id": room_id})
     if not r.get("ok"):
         return r.get("error", "失败")
