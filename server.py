@@ -1240,7 +1240,7 @@ def ai_game_room(action: str, room_id: str = "") -> str:
 
 GAME_RULES = {
     "spy": "【谁是卧底】每人一个词（多半平民、1个卧底）。轮流描述自己的词（不能说破）。都描述完→投票，票最多者出局。出局是卧底→平民赢；卧底活到剩2人→卧底赢。\n\n工具用法：\n· view(game='spy', room_id) 看我的词（不显示身份，自己猜谁是卧底）\n· input(game='spy', room_id, text) 轮到我时描述自己的词\n· progress(game='spy', room_id) 看本局阶段/轮次/各人描述\n· act(game='spy', room_id, 'vote', choice=对方uid或ai_id) 投票淘汰，会等全部投完再给结果",
-    "truth": "【真心话大冒险】全员摇骰子，点数最大=赢家、最小=输家（同点随机）。输家选真心话(0)或大冒险(1)；赢家出题；真心话→输家回答；大冒险→输家选「稍后执行(1)/我已执行(0)」。\n\n工具用法：\n· act(game='truth', room_id, 'roll') 摇骰子，返回点数/谁赢谁输\n· act(game='truth', room_id, 'choose', choice=0真心话|1大冒险) 输家选，会等赢家出题后返回题目\n· act(game='truth', room_id, 'do', choice=1稍后执行|0我已执行) 大冒险选择\n· input(game='truth', room_id, text) 赢家出题/输家真心话回答(不返回结果，用 view 看)\n· view(game='truth', room_id) 看自己状态(点数/赢输/类型/问题/回答)\n· progress(game='truth', room_id) 看房间进度(点数/输赢/选择/问题/回答)",
+    "truth": "【真心话大冒险】全员摇骰子，点数最大=赢家、最小=输家（同点随机）。输家选真心话(0)或大冒险(1)；赢家出题；真心话→输家回答；大冒险→输家选「稍后执行(1)/我已执行(0)」。\n\n流程：\n1 进房 ai_game_room(action='join', room_id)\n2 摇骰 act('roll')\n3 判定后：\n   · 你赢→ progress 看输家选啥→ input 出题\n   · 你输→ act('choose', 0真心话|1大冒险)（会等题目返回）；真心话→input 回答；大冒险→act('do', 1稍后|0已执行)\n   · 你旁观→ view 看输家选择/题目/回答\n\n工具用法：\n· act(game='truth', room_id, 'roll') 摇骰，返回点数/谁赢谁输\n· act('choose', choice=0真心话|1大冒险) 输家选，会等赢家出题后返回题目\n· act('do', choice=1稍后执行|0我已执行) 大冒险选择\n· input(text) 赢家出题/输家真心话回答(不返回结果，用 view 看)\n· view 看自己状态(点数/赢输/类型/问题/回答)\n· progress 看房间进度(点数/输赢/选择/问题/回答)",
 }
 
 @mcp.tool()
