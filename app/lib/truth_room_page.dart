@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'api.dart';
@@ -34,6 +35,17 @@ class _TruthRoomPageState extends State<TruthRoomPage> {
       if (p['is_ai'] != true && p['uid']?.toString() == widget.userId) return p;
     }
     return null;
+  }
+
+  Widget _avOf(Map p, double r) {
+    final img = p['avatar'] as String? ?? '';
+    if (img.isNotEmpty && img.length > 4 && img.contains('base64')) {
+      return CircleAvatar(radius: r, backgroundColor: Colors.black,
+          backgroundImage: MemoryImage(base64Decode(img.split(',').last)));
+    }
+    final name = (p['name'] ?? 'S').toString();
+    return CircleAvatar(radius: r, backgroundColor: Colors.black,
+        child: Text(name.isEmpty ? 'S' : name[0], style: const TextStyle(color: Colors.white, fontSize: 16)));
   }
 
   bool _match(dynamic key, Map p) {
@@ -141,7 +153,7 @@ class _TruthRoomPageState extends State<TruthRoomPage> {
               ),
               child: Column(children: [
                 Stack(children: [
-                  const CircleAvatar(radius: 20, backgroundColor: Colors.black, child: Icon(Icons.person, color: Colors.white, size: 20)),
+                  _avOf(p, 20),
                   if (win) const Positioned(top: -2, left: 8, child: _tag('赢', Color(0xFF008877))),
                   if (lose) const Positioned(top: -2, left: 8, child: _tag('输', Colors.red)),
                 ]),

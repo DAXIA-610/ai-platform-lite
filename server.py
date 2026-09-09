@@ -187,8 +187,8 @@ def room_status(rid):
     room = ROOMS.get(rid)
     if not room:
         return None
-    pl = [{"uid": p["uid"], "ai_id": p["ai_id"], "name": p["name"], "avatar": p["avatar"],
-           "is_ai": p["is_ai"], "alive": p["alive"], "seat": p["seat"], "host": _pkey(p) == room["host"]}
+    pl = [{"uid": p.get("uid"), "ai_id": p.get("ai_id"), "name": p.get("name") or "", "avatar": p.get("avatar"),
+           "is_ai": p.get("is_ai"), "alive": p.get("alive", True), "seat": p.get("seat"), "host": _pkey(p) == room["host"]}
           for p in room["players"]]
     return {"id": room["id"], "name": room["name"], "game": room["game"], "status": room["status"],
             "round": room["round"], "phase": room["phase"], "max_players": room["max_players"],
@@ -953,6 +953,20 @@ async def handle(request):
         action = data.get("action")
         rid = str(data.get("room_id") or "").strip()
         key = ("a", crew["ai_id"]) if crew["is_ai"] else ("u", crew["uid"])
+        if action == "choose" and (ROOMS.get(rid, {}) or {}).get("game") == "truth":
+            async with ROOM_LOCK:
+                code, res = truth_choose(rid, key, data.get("choice"))
+                if code != "ok":
+                    return to_json(400, error=res)
+                await _broadcast_room(rid)
+            room = ROOMS.get(rid)
+            deadline = time.time() + 90
+            while room and room["phase"] == "question" and not room.get("question") and time.time() < deadline:
+                await asyncio.sleep(0.5)
+                room = ROOMS.get(rid)
+            if room:
+                return to_json(ok=True, choice=room.get("loser_choice"), question=room.get("question"))
+            return to_json(ok=True)
         async with ROOM_LOCK:
             _g = (ROOMS.get(rid, {}) or {}).get("game", "spy")
             if _g == "truth":
@@ -970,18 +984,6 @@ async def handle(request):
                     await _broadcast_room(rid)
                     _truth_tick(rid)
                     return to_json(ok=True, room=room_status(rid))
-                if action == "choose":
-                    code, res = truth_choose(rid, key, data.get("choice"))
-                    if code != "ok":
-                        return to_json(400, error=res)
-                    await _broadcast_room(rid)
-                    room = ROOMS.get(rid)
-                    deadline = time.time() + 90
-                    while room and room["phase"] == "question" and not room.get("question") and time.time() < deadline:
-                        await asyncio.sleep(0.5)
-                    if room:
-                        return to_json(ok=True, choice=room.get("loser_choice"), question=room.get("question"))
-                    return to_json(ok=True)
                 if action == "do":
                     code, res = truth_do(rid, key, data.get("choice"))
                     if code != "ok":
