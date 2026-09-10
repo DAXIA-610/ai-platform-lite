@@ -16,16 +16,29 @@ class _TruthRoomPageState extends State<TruthRoomPage> {
   Timer? _t;
   Timer? _anim;
   bool _rolling = false;
+  bool _busy = false;
+  int _miss = 0;
   int? _animPoint;
 
   @override
-  void initState() { super.initState(); _refresh(); _t = Timer.periodic(const Duration(seconds: 3), (_) => _refresh()); }
+  void initState() { super.initState(); _refresh(); _t = Timer.periodic(const Duration(seconds: 2), (_) => _refresh()); }
   @override
   void dispose() { _t?.cancel(); _anim?.cancel(); super.dispose(); }
 
   Future<void> _refresh() async {
     final r = await Api.roomStatus(widget.roomId, widget.userKey);
-    if (r['room'] != null && mounted) setState(() => _room = r['room']);
+    if (!mounted) return;
+    if (r['room'] != null) {
+      _miss = 0;
+      setState(() => _room = r['room']);
+    } else {
+      _miss++;
+      if (_miss >= 3) {
+        _t?.cancel();
+        _toast('房间已解散');
+        Navigator.of(context).maybePop();
+      }
+    }
   }
 
   List<Map<String, dynamic>> _players() => (_room?['players'] as List? ?? []).cast<Map<String, dynamic>>();
@@ -69,25 +82,43 @@ class _TruthRoomPageState extends State<TruthRoomPage> {
     return null;
   }
 
-  Future<void> _start() async { await Api.gameStart(widget.roomId, widget.userKey); _refresh(); }
+  Future<void> _start() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final r = await Api.gameStart(widget.roomId, widget.userKey);
+    if (mounted) setState(() => _busy = false);
+    if (r['ok'] != true) _toast((r['error'] ?? '开始失败').toString());
+    _refresh();
+  }
+
+  void _toast(String m) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  }
 
   Future<void> _rollTap() async {
-    setState(() { _rolling = true; });
+    if (_rolling || _busy) return;
+    setState(() { _rolling = true; _busy = true; });
     _anim?.cancel();
     _anim = Timer.periodic(const Duration(milliseconds: 90), (_) {
       setState(() => _animPoint = 1 + Random().nextInt(6));
     });
-    await Api.truthOp(widget.roomId, 'roll', widget.userKey);
+    final r = await Api.truthOp(widget.roomId, 'roll', widget.userKey);
     await Future.delayed(const Duration(milliseconds: 700));
     _anim?.cancel();
     await _refresh();
-    setState(() { _rolling = false; _animPoint = null; });
+    if (mounted) setState(() { _rolling = false; _busy = false; _animPoint = null; });
+    if (r['ok'] != true) _toast((r['error'] ?? '摇骰失败').toString());
   }
 
   Future<void> _op(String action, {int choice = -1, String text = ''}) async {
-    await Api.truthOp(widget.roomId, action, widget.userKey,
+    if (_busy) return;
+    setState(() => _busy = true);
+    final r = await Api.truthOp(widget.roomId, action, widget.userKey,
         choice: choice >= 0 ? choice.toString() : '', text: text);
-    _refresh();
+    await _refresh();
+    if (mounted) setState(() => _busy = false);
+    if (r['ok'] != true) _toast((r['error'] ?? '操作失败').toString());
   }
 
   Future<void> _input() async {
@@ -197,18 +228,30 @@ class _TruthRoomPageState extends State<TruthRoomPage> {
   }
 
   Widget _banner(String phase, lc, q, a, dare) {
+    final loserName = _byKey(_room?['loser'])?['name'] ?? '输家';
+    final winnerName = _byKey(_room?['winner'])?['name'] ?? '赢家';
     String text;
-    if (phase == 'waiting') text = '等待房主开始…';
-    else if (phase == 'roll') text = '全员摇骰子…';
-    else if (phase == 'choose') text = '等待输家选择 真心话/大冒险';
-    else if (lc == null) text = '';
-    else {
-      final whom = _byKey(_room?['loser'])?['name'] ?? '输家';
-      if (phase == 'question') text = '$whom 选择${lc == 'truth' ? '真心话' : '大冒险'}';
-      else if (q != null && phase == 'answer') text = '问题：$q';
-      else if (a != null) text = '回答：$a';
-      else if (dare != null) text = '$whom 选择${dare == 'done' ? '我已执行' : '稍后执行'}';
-      else text = '';
+    if (phase == 'waiting') {
+      text = '等待房主开始，喊上朋友一起摇骰子';
+    } else if (phase == 'roll') {
+      text = '全员摇骰子，点数最大是赢家、最小是输家';
+    } else if (phase == 'choose') {
+      text = '等 $loserName 选真心话 / 大冒险…';
+    } else if (phase == 'question') {
+      text = lc == 'dare'
+          ? '$loserName 选了大冒险，等 $winnerName 出任务…'
+          : '$loserName 选了真心话，等 $winnerName 出题…';
+    } else if (phase == 'answer') {
+      if (q == null) {
+        text = lc == 'dare' ? '等 $winnerName 出任务…' : '等 $winnerName 出题…';
+      } else {
+        text = (lc == 'dare' ? '任务：' : '题目：') + '$q\n请 $loserName ' + (lc == 'dare' ? '执行' : '回答');
+      }
+    } else {
+      if (a != null) text = '回答：$a';
+      else if (dare != null) text = '大冒险：$q\n$loserName ${dare == 'done' ? '已执行' : '稍后执行'}';
+      else if (q != null) text = '本局结束：$q';
+      else text = '本局结束';
     }
     if (text.isEmpty) return const SizedBox.shrink();
     return Container(
@@ -228,6 +271,9 @@ class _TruthRoomPageState extends State<TruthRoomPage> {
   }
 
   Widget _actions(phase, isHost, isWinner, isLoser, myPoint, lc, q, a, dare) {
+    if (_busy) {
+      return const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)));
+    }
     if (phase == 'roll') {
       return Center(child: myPoint == null
           ? FilledButton.icon(onPressed: _rollTap, style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14)), icon: const Icon(Icons.casino), label: const Text('摇骰子'))
@@ -242,7 +288,7 @@ class _TruthRoomPageState extends State<TruthRoomPage> {
       return const Center(child: Text('等待输家选择…', style: TextStyle(color: Colors.grey)));
     }
     if (phase == 'question') {
-      if (isWinner) return Center(child: FilledButton.icon(onPressed: _input, icon: const Icon(Icons.edit), label: const Text('输入问题')));
+      if (isWinner) return Center(child: FilledButton.icon(onPressed: _input, icon: const Icon(Icons.edit), label: Text(lc == 'dare' ? '输入任务' : '输入问题')));
       return const Center(child: Text('等待赢家出题…', style: TextStyle(color: Colors.grey)));
     }
     if (phase == 'answer') {
@@ -259,7 +305,11 @@ class _TruthRoomPageState extends State<TruthRoomPage> {
       }
     }
     if (phase == 'result') {
+      final w = _byKey(_room?['winner'])?['name'] ?? '赢家';
+      final l = _byKey(_room?['loser'])?['name'] ?? '输家';
       return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text('$w 赢  ·  $l 输', style: const TextStyle(color: Colors.black, fontSize: 14)),
+        const SizedBox(height: 4),
         const Text('本局结束', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
         if (isHost) ...[
           const SizedBox(height: 10),

@@ -12,6 +12,7 @@ AI 调用时请求头带两个 key：X-User-Key(认归属前端) + X-AI-Key(认�
 import json
 import os
 import urllib.request
+import urllib.error
 
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
@@ -35,8 +36,16 @@ def _call(method, path, body=None, q=None):
                                      headers=headers, method="POST")
     else:
         req = urllib.request.Request(url, headers=headers, method="GET")
-    with urllib.request.urlopen(req, timeout=20) as r:
-        return json.loads(r.read())
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        try:
+            return json.loads(e.read())
+        except Exception:
+            return {"ok": False, "error": "HTTP %s" % e.code}
+    except Exception as e:
+        return {"ok": False, "error": "请求失败: %s" % e}
 
 
 @mcp.tool()

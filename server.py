@@ -16,6 +16,7 @@ import sqlite3
 import secrets
 import hashlib
 import urllib.request
+import urllib.error
 
 from starlette.applications import Starlette
 from starlette.routing import Route, WebSocketRoute, Mount
@@ -163,6 +164,8 @@ def room_join(rid, crew):
     key = ("a", crew.get("ai_id")) if crew.get("is_ai") else ("u", crew.get("uid"))
     if _find(room, key):
         return "ok", room
+    if room.get("status") != "waiting":
+        return "started", "游戏已开始，中途不能加入"
     if len(room["players"]) >= room["max_players"]:
         return "full", "房间已满"
     room["players"].append(_mk_player(crew, len(room["players"])))
@@ -176,6 +179,7 @@ def room_leave(rid, key):
     if not p:
         return "fail", "不在房间"
     room["players"].remove(p)
+    _truth_on_leave(room, key)
     if _find(room, room["host"]) is None and room["players"]:
         room["host"] = _pkey(room["players"][0])
     if not room["players"]:
@@ -342,7 +346,8 @@ def truth_start(rid):
     room["phase"] = "roll"
     room["rolls"] = {}; room["winner"] = None; room["loser"] = None
     room["loser_choice"] = None; room["question"] = None; room["answer"] = None; room["dare"] = None
-    room["roll_started"] = time.time(); room["choices_started"] = time.time(); room["answer_started"] = time.time()
+    room["roll_started"] = time.time(); room["choices_started"] = time.time()
+    room["question_started"] = time.time(); room["answer_started"] = time.time()
     return "ok", room
 
 def _truth_settle(room):
@@ -365,7 +370,7 @@ def truth_roll(rid, key):
     if not room:
         return "notfound", "房间不存在"
     if room["phase"] != "roll":
-        return "bad", "还不是摇骰阶段"
+        return "bad", "还不是摇骰阶段（可能已经摇过了，用 view 确认，别重复调用）"
     if key in room["rolls"]:
         return "ok", room
     p = _find(room, key)
@@ -381,11 +386,12 @@ def truth_choose(rid, key, choice):
     if not room:
         return "notfound", "房间不存在"
     if room["phase"] != "choose":
-        return "bad", "还不是选择阶段"
+        return "bad", "还不是选择阶段（可能已经选过了，用 view 确认，别重复调用）"
     if key != room["loser"]:
         return "bad", "你不是输家"
-    room["loser_choice"] = "dare" if choice in (1, "1", "dare") else "truth"
+    room["loser_choice"] = "dare" if choice in (1, "1", "dare", "大冒险") else "truth"
     room["phase"] = "question"
+    room["question_started"] = time.time()
     room["question"] = None; room["answer"] = None; room["dare"] = None
     return "ok", room
 
@@ -394,10 +400,13 @@ def truth_question(rid, key, text):
     if not room:
         return "notfound", "房间不存在"
     if room["phase"] != "question":
-        return "bad", "还不是出题阶段"
+        return "bad", "还不是出题阶段（可能已经出过了，用 view 确认，别重复调用）"
     if key != room["winner"]:
-        return "bad", "你不是赢家"
-    room["question"] = (text or "")[:500]
+        return "bad", "你不是赢家，别重复出题"
+    t = (text or "").strip()
+    if not t:
+        return "bad", "题目/任务不能为空"
+    room["question"] = t[:500]
     room["phase"] = "answer"; room["answer_started"] = time.time()
     return "ok", room
 
@@ -406,10 +415,13 @@ def truth_answer(rid, key, text):
     if not room:
         return "notfound", "房间不存在"
     if room["phase"] != "answer" or room["loser_choice"] != "truth":
-        return "bad", "还不是回答阶段"
+        return "bad", "还不是回答阶段（用 view 看状态，别重复调用）"
     if key != room["loser"]:
-        return "bad", "你不是输家"
-    room["answer"] = (text or "")[:500]
+        return "bad", "你不是输家，别重复回答"
+    t = (text or "").strip()
+    if not t:
+        return "bad", "回答不能为空"
+    room["answer"] = t[:500]
     room["phase"] = "result"
     return "ok", room
 
@@ -418,7 +430,7 @@ def truth_do(rid, key, val):
     if not room:
         return "notfound", "房间不存在"
     if room["phase"] != "answer" or room["loser_choice"] != "dare":
-        return "bad", "还不是执行阶段"
+        return "bad", "还不是执行阶段（可能已经选过了，用 view 确认，别重复调用）"
     if key != room["loser"]:
         return "bad", "你不是输家"
     room["dare"] = "done" if val in (0, "0") else "later"  # 我已执行=0, 稍后执行=1
@@ -444,7 +456,8 @@ def truth_progress(rid):
         return None
     return {"game": "truth", "phase": room["phase"], "round": room["round"],
             "rolls": [{"k": list(k), "v": v} for k, v in (room.get("rolls") or {}).items()],
-            "winner": room["winner"], "loser": room["loser"],
+            "winner": list(room["winner"]) if room.get("winner") else None,
+            "loser": list(room["loser"]) if room.get("loser") else None,
             "loser_choice": room.get("loser_choice"), "question": room.get("question"),
             "answer": room.get("answer"), "dare": room.get("dare")}
 
@@ -463,8 +476,28 @@ def _truth_tick(rid):
         import random
         room["loser_choice"] = random.choice(["truth", "dare"])
         room["phase"] = "question"
+        room["question_started"] = now
+    elif room["phase"] == "question" and now - room.get("question_started", room.get("choices_started", now)) > 90:
+        room["question"] = room.get("question") or "（赢家超时未出题，本局跳过）"
+        room["phase"] = "result"
     elif room["phase"] == "answer" and now - room.get("answer_started", now) > 120:
         room["phase"] = "result"
+
+
+def _truth_on_leave(room, key):
+    """真心话大冒险：赢家/输家中途退出时兜底，避免房间卡死。"""
+    if room.get("game") != "truth" or room.get("status") != "playing":
+        return
+    ph = room.get("phase")
+    if key == room.get("loser") and ph in ("choose", "question"):
+        import random
+        if ph == "choose":
+            room["loser_choice"] = random.choice(["truth", "dare"])
+        room["phase"] = "result"
+        room["question"] = room.get("question") or "（输家已离开，本局结束）"
+    elif key == room.get("winner") and ph == "question":
+        room["phase"] = "result"
+        room["question"] = room.get("question") or "（赢家已离开，本局跳过）"
 
 def _actor(request, data):
     """返回 (crew, kind)。kind: human/ai/None。crew 含 uid/ai_id/name/avatar/is_ai。"""
@@ -920,6 +953,8 @@ async def handle(request):
                     return to_json(404, error="房间不存在")
                 if code == "full":
                     return to_json(409, error="房间已满")
+                if code == "started":
+                    return to_json(409, error="游戏已开始，中途不能加入")
                 await _broadcast_room(rid)
                 return to_json(ok=True, room=room_status(rid))
             if action == "leave":
@@ -959,14 +994,9 @@ async def handle(request):
                 if code != "ok":
                     return to_json(400, error=res)
                 await _broadcast_room(rid)
-            room = ROOMS.get(rid)
-            deadline = time.time() + 90
-            while room and room["phase"] == "question" and not room.get("question") and time.time() < deadline:
-                await asyncio.sleep(0.5)
                 room = ROOMS.get(rid)
-            if room:
-                return to_json(ok=True, choice=room.get("loser_choice"), question=room.get("question"))
-            return to_json(ok=True)
+            return to_json(ok=True, choice=room.get("loser_choice") if room else None,
+                           phase=room.get("phase") if room else None)
         async with ROOM_LOCK:
             _g = (ROOMS.get(rid, {}) or {}).get("game", "spy")
             if _g == "truth":
@@ -1162,8 +1192,16 @@ def _call(method, path, body=None, q=None):
         req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers, method="POST")
     else:
         req = urllib.request.Request(url, headers=headers, method="GET")
-    with urllib.request.urlopen(req, timeout=20) as r:
-        return json.loads(r.read())
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        try:
+            return json.loads(e.read())
+        except Exception:
+            return {"ok": False, "error": "HTTP %s" % e.code}
+    except Exception as e:
+        return {"ok": False, "error": "请求失败: %s" % e}
 
 @mcp.tool()
 def ai_status(mode: int) -> str:
@@ -1234,6 +1272,8 @@ def ai_game_room(action: str, room_id: str = "") -> str:
             for p in pl:
                 tag = ("AI" if p["is_ai"] else "人") + ("[房主]" if p.get("host") else "") + ("[出局]" if not p["alive"] else "")
                 lines.append(f"  {p['name']} ({tag})")
+        if room.get("game") == "truth":
+            lines.append("提示：用 view 看自己的点数和下一步；摇过/选过/出过题都别重复调用")
         return "\n".join(lines)
     if action == "join":
         pl = room.get("players", [])
@@ -1242,8 +1282,31 @@ def ai_game_room(action: str, room_id: str = "") -> str:
 
 GAME_RULES = {
     "spy": "【谁是卧底】每人一个词（多半平民、1个卧底）。轮流描述自己的词（不能说破）。都描述完→投票，票最多者出局。出局是卧底→平民赢；卧底活到剩2人→卧底赢。\n\n工具用法：\n· view(game='spy', room_id) 看我的词（不显示身份，自己猜谁是卧底）\n· input(game='spy', room_id, text) 轮到我时描述自己的词\n· progress(game='spy', room_id) 看本局阶段/轮次/各人描述\n· act(game='spy', room_id, 'vote', choice=对方uid或ai_id) 投票淘汰，会等全部投完再给结果",
-    "truth": "【真心话大冒险】全员摇骰子，点数最大=赢家、最小=输家（同点随机）。输家选真心话(0)或大冒险(1)；赢家出题；真心话→输家回答；大冒险→输家选「稍后执行(1)/我已执行(0)」。\n\n流程：\n1 进房 ai_game_room(action='join', room_id)\n2 摇骰 act('roll')\n3 判定后：\n   · 你赢→ progress 看输家选啥→ input 出题\n   · 你输→ act('choose', 0真心话|1大冒险)（会等题目返回）；真心话→input 回答；大冒险→act('do', 1稍后|0已执行)\n   · 你旁观→ view 看输家选择/题目/回答\n\n工具用法：\n· act(game='truth', room_id, 'roll') 摇骰，返回点数/谁赢谁输\n· act('choose', choice=0真心话|1大冒险) 输家选，会等赢家出题后返回题目\n· act('do', choice=1稍后执行|0我已执行) 大冒险选择\n· input(text) 赢家出题/输家真心话回答(不返回结果，用 view 看)\n· view 看自己状态(点数/赢输/类型/问题/回答)\n· progress 看房间进度(点数/输赢/选择/问题/回答)",
+    "truth": "【真心话大冒险】全员摇骰子，点数最大=赢家、最小=输家（同点随机）。输家选真心话(0)或大冒险(1)，赢家出题，输家回答/执行。\n\n流程：\n1 进房 ai_game_room('join', room_id)（游戏开始后进不去）\n2 每人摇一次 act('roll')，直接返回你的点数和你是什么身份\n3 判定后：\n   · 你赢→ progress 看输家选完没→ input 出题（大冒险就出任务）\n   · 你输→ act('choose', 0真心话|1大冒险)，工具会等你一小会；真心话→ input 回答；大冒险→ act('do', 0我已执行|1稍后执行)\n   · 都不是→ view/progress 围观\n4 本局结束，等房主开下一局\n\n⚠每个阶段只调用一次：摇过就别再摇，选过就别再选，出过题/回答过就别再输入，重复调用一定报错。每次操作后先 view 或 progress 看状态，再决定下一步，不要连着刷工具。\n超时兜底：摇骰60秒、选择60秒、出题90秒、回答120秒，超时自动跳过。",
 }
+
+def _truth_hint(ph, r):
+    """给 AI 一句“下一步该干嘛”，避免它乱试乱刷工具。"""
+    if ph == "roll":
+        return "还没摇就 act('roll') 摇一次；摇过就等别人，用 progress 看，别重复摇"
+    if ph == "choose":
+        if r.get("is_loser"):
+            return "用 act('choose', 0真心话|1大冒险)"
+        return "等输家选择，用 progress 看"
+    if ph == "question":
+        if r.get("is_winner"):
+            return "用 input 出题/出任务"
+        return "等赢家出题，用 progress 看，别催"
+    if ph == "answer":
+        if r.get("is_loser"):
+            if r.get("loser_choice") == "truth":
+                return "用 input 回答"
+            return "用 act('do', 0我已执行|1稍后执行)"
+        return "等输家回答/执行，用 progress 看"
+    if ph == "result":
+        return "本局结束，等房主开下一局，别再操作"
+    return "用 progress 看整体进度"
+
 
 @mcp.tool()
 def ai_game_rules(game: str) -> str:
@@ -1252,24 +1315,22 @@ def ai_game_rules(game: str) -> str:
 
 @mcp.tool()
 def ai_game_view(game: str, room_id: str) -> str:
-    """全游戏通用 · 查看自己的游戏状态/牌(词)，不显示身份、需自己推理。先看规则确认参数。game=游戏名，room_id=房间号。"""
+    """全游戏通用 · 查看自己的游戏状态/牌(词)，不显示身份、需自己推理。先看规则确认参数。game=游戏名，room_id=房间号。
+    建议每轮只用一次来确认状态，别连续调用。"""
     if game == "truth":
         r = _call("POST", "/api/game/play", {"action": "view", "room_id": room_id})
         if not r.get("ok"):
             return r.get("error", "失败")
-        s = f"第{r.get('round')}轮 · {r.get('phase')}\n我的点数：{r.get('point')}"
-        if r.get("is_winner"): s += "  【你赢了】"
-        if r.get("is_loser"): s += "  【你输了】"
-        if r.get("question"):
-            s += f"\n题目：{r.get('question')}"
-        elif r.get("phase") == "answer" and r.get("is_loser"):
-            s += "\n（题目还没出，等待赢家提问）"
-        else:
-            s += "\n（还没提问）"
-        if r.get("answer"):
-            s += f"\n回答：{r.get('answer')}"
-        elif r.get("is_loser"):
-            s += "\n（还没回答）"
+        ph = r.get("phase")
+        s = f"第{r.get('round')}轮 · {ph}\n我的点数：{r.get('point')}"
+        if r.get("is_winner"): s += "  【你是赢家】"
+        if r.get("is_loser"): s += "  【你是输家】"
+        if r.get("loser_choice"):
+            s += "\n输家选的是：" + ("真心话" if r.get("loser_choice") == "truth" else "大冒险")
+        if r.get("question"): s += "\n题目：" + str(r.get("question"))
+        if r.get("answer"): s += "\n回答：" + str(r.get("answer"))
+        if r.get("dare"): s += "\n大冒险：" + ("已执行" if r.get("dare") == "done" else "稍后执行")
+        s += "\n下一步：" + _truth_hint(ph, r)
         return s
     r = _call("POST", "/api/game/play", {"action": "my_card", "room_id": room_id})
     if not r.get("ok"):
@@ -1278,27 +1339,59 @@ def ai_game_view(game: str, room_id: str) -> str:
 
 @mcp.tool()
 def ai_game_input(game: str, room_id: str, text: str) -> str:
-    """全游戏通用 · 在游戏里输入文字。先看规则确认参数。game=游戏名，room_id=房间号，text=内容。"""
+    """全游戏通用 · 在游戏里输入文字。先看规则确认参数。game=游戏名，room_id=房间号，text=内容。
+    同一阶段只输入一次，出过题/回答过就别再调用，重复会报错。"""
     action = "input" if game == "truth" else "speak"
     r = _call("POST", "/api/game/play", {"action": action, "room_id": room_id, "text": text})
-    return "OK 已输入" if r.get("ok") else r.get("error", "失败")
+    if not r.get("ok"):
+        return r.get("error", "失败")
+    return "OK 已输入（别再重复输入，用 view 看结果）"
 
 @mcp.tool()
 def ai_game_act(game: str, room_id: str, action_type: str, choice: str = "") -> str:
-    """全游戏通用 · 执行游戏操作。先看规则确认参数。game=游戏名，action_type=操作类型(如 vote/roll/choose/do)，choice=选择(可空)。"""
+    """全游戏通用 · 执行游戏操作。先看规则确认参数。game=游戏名，action_type=操作类型(如 vote/roll/choose/do)，choice=选择(可空)。
+    同一个阶段只调用一次，重复调用会报错；拿不准先 view 或 progress，不要连着刷。"""
     if game == "truth":
         if action_type == "roll":
             r = _call("POST", "/api/game/play", {"action": "roll", "room_id": room_id})
-            if not r.get("ok"): return r.get("error", "失败")
-            return "OK 已摇骰"
+            if not r.get("ok"):
+                return r.get("error", "失败")
+            v = _call("POST", "/api/game/play", {"action": "view", "room_id": room_id})
+            if not v.get("ok"):
+                return "OK 已摇骰"
+            s = "你摇到 %s 点" % v.get("point")
+            if v.get("phase") == "roll":
+                s += "，还有人在摇，等一会儿用 progress 看结果，别重复摇骰"
+            elif v.get("is_winner"):
+                s += "，你是赢家。等输家选完（用 progress 看谁选了什么）再出题，别重复摇骰"
+            elif v.get("is_loser"):
+                s += "，你是输家。请用 act('choose', choice=0真心话|1大冒险)，别重复摇骰"
+            else:
+                s += "，你不是赢家也不是输家，用 progress 看结果，别重复摇骰"
+            return s
         if action_type == "choose":
             r = _call("POST", "/api/game/play", {"action": "choose", "room_id": room_id, "choice": choice})
-            if not r.get("ok"): return r.get("error", "失败")
-            return "你选择：" + ("真心话" if str(r.get("choice")) == "truth" else "大冒险") + "\n题目：" + str(r.get("question"))
+            if not r.get("ok"):
+                return r.get("error", "失败")
+            mine = "大冒险" if str(r.get("choice")) == "dare" else "真心话"
+            q = None
+            for _ in range(4):                      # 内部最多等约10秒，避免AI重复调用
+                time.sleep(2.5)
+                v = _call("POST", "/api/game/play", {"action": "view", "room_id": room_id})
+                if v.get("ok") and v.get("question"):
+                    q = v.get("question"); break
+            if q:
+                tail = "请用 input 回答" if mine == "真心话" else "请用 act('do', choice=0我已执行|1稍后执行)"
+                return "你选了：%s\n题目：%s\n%s（别再重复 choose）" % (mine, q, tail)
+            return "你选了：%s\n赢家还没出题。过一会用 view 看题目，别再重复 choose" % mine
         if action_type == "do":
             r = _call("POST", "/api/game/play", {"action": "do", "room_id": room_id, "choice": choice})
-            if not r.get("ok"): return r.get("error", "失败")
-            return "OK 已选择"
+            if not r.get("ok"):
+                return r.get("error", "失败")
+            v = _call("POST", "/api/game/play", {"action": "view", "room_id": room_id})
+            if v.get("ok") and v.get("dare"):
+                return "OK 已选择：" + ("我已执行" if v.get("dare") == "done" else "稍后执行") + "（本局结束，别再重复调用）"
+            return "OK 已选择（本局结束，别再重复调用）"
         return "未知操作：" + str(action_type)
     if action_type != "vote":
         return "未知操作：" + str(action_type)
@@ -1324,11 +1417,15 @@ def ai_game_progress(game: str, room_id: str) -> str:
                 lines.append(f"{names.get(tuple(k), k)} {v}")
             out += "\n点数：\n" + "\n".join(lines)
         if r.get("winner"):
-            out += "\n赢家：" + str(names.get(r.get("winner"), r.get("winner"))) + "  输家：" + str(names.get(r.get("loser"), r.get("loser")))
+            wk = tuple(r["winner"]) if isinstance(r.get("winner"), list) else r.get("winner")
+            lk = tuple(r["loser"]) if isinstance(r.get("loser"), list) else r.get("loser")
+            out += "\n赢家：" + str(names.get(wk, wk)) + "  输家：" + str(names.get(lk, lk))
         if r.get("loser_choice"):
             out += "\n输家选择：" + ("真心话" if r.get("loser_choice") == "truth" else "大冒险")
         if r.get("question"): out += "\n问题：" + str(r.get("question"))
         if r.get("answer"): out += "\n回答：" + str(r.get("answer"))
+        if r.get("dare"): out += "\n大冒险：" + ("已执行" if r.get("dare") == "done" else "稍后执行")
+        out += "\n（按上面状态操作一次即可，别重复调用）"
         return out
     phase = r.get("phase"); rd = r.get("round"); ds = r.get("descs", [])
     out = f"第{rd}轮 · {phase}"

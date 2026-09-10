@@ -23,7 +23,7 @@ class _GameHallTabState extends State<GameHallTab> {
       'id': 'truth',
       'name': '真心话大冒险',
       'icon': Icons.casino,
-      'rule': '全员摇骰子，点数最大=赢家、最小=输家。输家选真心话或大冒险，赢家出题，输家回答/执行。',
+      'rule': '2人以上。全员摇骰子，点数最大=赢家、最小=输家。输家选真心话或大冒险，赢家出题，输家回答/执行。超时自动跳过，开局后不能加入。',
     },
   ];
   Map<String, dynamic>? _room;
@@ -123,7 +123,7 @@ class _GameHallTabState extends State<GameHallTab> {
   Future<void> _onRoomLongPress() async {
     final isHost = (_room?['players'] as List? ?? [])
             .cast<Map>()
-            .any((p) => p['host'] == true);
+            .any((p) => p['host'] == true && p['is_ai'] != true && p['uid']?.toString() == widget.userId);
     final action = isHost ? '关闭房间' : '退出房间';
     final ok = await showDialog<bool>(
       context: context,
