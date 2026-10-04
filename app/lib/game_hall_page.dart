@@ -23,7 +23,7 @@ class _GameHallTabState extends State<GameHallTab> {
       'id': 'truth',
       'name': '真心话大冒险',
       'icon': Icons.casino,
-      'rule': '2人以上。全员摇骰子，点数最大=赢家、最小=输家。输家选真心话或大冒险，赢家出题，输家回答/执行。超时自动跳过，开局后不能加入。',
+      'rule': '2人以上。全员摇骰子，点数最大=赢家、最小=输家。输家选真心话或大冒险，题目由题库自动抽（赢家也能自己出），输家回答/执行。超时自动跳过，开局后不能加入。',
     },
   ];
   Map<String, dynamic>? _room;
@@ -43,22 +43,33 @@ class _GameHallTabState extends State<GameHallTab> {
             children: [
               TextField(controller: nameC, decoration: const InputDecoration(labelText: '房间名')),
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: game,
-                items: _games
-                    .map((x) => DropdownMenuItem<String>(value: x['id'] as String, child: Text(x['name'] as String)))
-                    .toList(),
-                onChanged: (v) { if (v != null) { game = v; st(() {}); } },
+              // 用 InputDecorator + DropdownButton：新老 Flutter 都稳
+              // （FormField 那一版的 value 参数在新版里改名了，留着容易编译不过）
+              InputDecorator(
                 decoration: const InputDecoration(labelText: '游戏'),
+                child: DropdownButton<String>(
+                  value: game,
+                  isExpanded: true,
+                  underline: const SizedBox.shrink(),
+                  items: _games
+                      .map((x) => DropdownMenuItem<String>(value: x['id'] as String, child: Text(x['name'] as String)))
+                      .toList(),
+                  onChanged: (v) { if (v != null) { game = v; st(() {}); } },
+                ),
               ),
               const SizedBox(height: 12),
-              DropdownButtonFormField<int>(
-                value: maxP,
-                items: [3, 4, 5, 6]
-                    .map((x) => DropdownMenuItem(value: x, child: Text('$x 人')))
-                    .toList(),
-                onChanged: (v) { if (v != null) { maxP = v; st(() {}); } },
+              InputDecorator(
                 decoration: const InputDecoration(labelText: '房间人数'),
+                child: DropdownButton<int>(
+                  value: maxP,
+                  isExpanded: true,
+                  underline: const SizedBox.shrink(),
+                  // 后端 ROOM_MAX 已经放开到 12
+                  items: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+                      .map((x) => DropdownMenuItem(value: x, child: Text('$x 人')))
+                      .toList(),
+                  onChanged: (v) { if (v != null) { maxP = v; st(() {}); } },
+                ),
               ),
             ],
           ),
@@ -151,7 +162,7 @@ class _GameHallTabState extends State<GameHallTab> {
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: Colors.black.withOpacity(0.3))),
+            side: const BorderSide(color: Color.fromRGBO(0, 0, 0, 0.3))),
         title: Text(g['name'], style: const TextStyle(color: Colors.black)),
         content: Text(g['rule'], style: const TextStyle(color: Colors.black)),
         actions: [

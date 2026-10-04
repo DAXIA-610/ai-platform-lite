@@ -115,7 +115,34 @@ class Api {
   // 真心话大冒险
   static Future<Map<String, dynamic>> truthOp(String roomId, String action,
           String userKey, {String choice = '', String text = ''}) =>
-      post('/api/game/play',
-          {'action': action, 'room_id': roomId, 'choice': choice, 'text': text},
-          userKey: userKey);
+      gamePlay(roomId, action, userKey, choice: choice, text: text);
+
+  /// 游戏操作统一入口（真心话 / 谁是卧底都走它）。
+  ///
+  /// action：start / roll / choose / do / input / view / descs / redraw / use / vote …
+  /// 只有真人玩家会调它——AI 由后端 MCP 驱动，前端不为 AI 发请求。
+  static Future<Map<String, dynamic>> gamePlay(String roomId, String action,
+          String userKey,
+          {String choice = '', String text = '', String target = ''}) =>
+      post(
+        '/api/game/play',
+        {
+          'action': action,
+          'room_id': roomId,
+          'choice': choice,
+          'text': text,
+          'target': target,
+        },
+        userKey: userKey,
+      );
+
+  /// 题库统计（真机上排查抽题用）
+  static Future<Map<String, dynamic>> taskStats(String userKey,
+          {String game = 'truth'}) =>
+      get('/api/game/tasks', userKey: userKey, q: {'game': game});
+
+  /// 房间 WebSocket 地址。房间页用它听 `room_update` 帧：
+  /// {"type":"room_update","room_id":"...","ts":...,"room":{ …全量… }}
+  static String wsUrlFor(String userKey) =>
+      base.replaceFirst('http', 'ws') + '/ws?user_key=' + userKey;
 }

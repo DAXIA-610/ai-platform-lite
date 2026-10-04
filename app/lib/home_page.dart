@@ -257,7 +257,7 @@ class _HomeTab extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.black87.withOpacity(0.3), width: 1), borderRadius: BorderRadius.circular(14)),
+      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Color.fromRGBO(0, 0, 0, 0.26), width: 1), borderRadius: BorderRadius.circular(14)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           state._av(img, a['name'], 24),
@@ -364,7 +364,7 @@ class _MessagesTabState extends State<_MessagesTab> {
                   return Container(
                     margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     decoration: BoxDecoration(color: Colors.white,
-                        border: Border.all(color: Colors.black.withOpacity(0.3)),
+                        border: Border.all(color: Color.fromRGBO(0, 0, 0, 0.3)),
                         borderRadius: BorderRadius.circular(14)),
                     child: ListTile(
                       leading: av,
