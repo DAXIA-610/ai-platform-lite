@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
     steps:
       - uses: actions/checkout@v4
 
@@ -45,6 +46,7 @@ jobs:
           ls data/
 
       - name: 提交结果并清掉补丁
+        id: commit
         if: steps.check.outputs.ready == 'yes'
         run: |
           set -e
@@ -54,7 +56,25 @@ jobs:
           git add -A
           if git diff --cached --quiet; then
             echo "没有变化，不提交"
+            echo "touched_app=no" >> "$GITHUB_OUTPUT"
           else
             git commit -m "chore: 应用补丁"
             git push
+            if git show --stat HEAD | grep -q ' app/'; then
+              echo "touched_app=yes" >> "$GITHUB_OUTPUT"
+            else
+              echo "touched_app=no" >> "$GITHUB_OUTPUT"
+            fi
           fi
+
+      - name: 改了 app/ 就顺手触发一次 APK 构建
+        if: steps.commit.outputs.touched_app == 'yes'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "这次动到了 app/，dispatch flutter-apk.yml"
+          curl -sS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/flutter-apk.yml/dispatches" \
+            -d '{"ref":"main"}'
