@@ -3,7 +3,10 @@ import 'package:http/http.dart' as http;
 
 /// 统一的后端 API 封装。后端地址写死为局域网地址。
 class Api {
-  static String base = "http://192.168.10.147:8000";
+  /// 后端地址。
+  /// 后端跟 APP 跑在同一台机器上时可以用 127.0.0.1；要让别人也能连进来，
+  /// 就得填这台机器的局域网 IP（注意：路由器重新分配后 IP 会变）。
+  static String base = "http://192.168.1.133:8000";
 
   static String wsUrl() => base.replaceFirst('http', 'ws') + '/ws';
 
