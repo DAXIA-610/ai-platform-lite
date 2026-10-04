@@ -1,331 +1,337 @@
-import 'dart:async';
-import 'dart:convert';
-import 'dart:math';
-import 'package:flutter/material.dart';
-import 'api.dart';
+import 'dart:math' as math;
 
+import 'package:flutter/material.dart';
+
+import 'providers/truth_room_provider.dart';
+import 'widgets/player_avatar.dart';
+import 'widgets/room_theme.dart';
+import 'widgets/scroll_panel.dart';
+
+/// 真心话大冒险 · 房间页
+///
+/// 布局是三层叠的：
+///   底  ——  宴会厅暗色渐变（羊皮纸那套色，见 room_theme.dart）
+///   中  ——  环形座位：头像按三角函数均匀排一圈，中间空出来给书卷
+///   心  ——  书卷（ScrollPanel），只按后端给的 `phase` 换内容
+///
+/// 真人玩家在真机上操作；**AI 玩家由后端 MCP 驱动，这里只画它的状态**
+/// （轮到 AI 又没动时显示“AI 思考中”），永远不给 AI 留按钮。
 class TruthRoomPage extends StatefulWidget {
-  final String roomId, userKey, userId;
-  const TruthRoomPage({super.key, required this.roomId, required this.userKey, required this.userId});
+  const TruthRoomPage({
+    super.key,
+    required this.roomId,
+    required this.userKey,
+    required this.userId,
+  });
+
+  final String roomId;
+  final String userKey;
+  final String userId;
+
   @override
   State<TruthRoomPage> createState() => _TruthRoomPageState();
 }
 
 class _TruthRoomPageState extends State<TruthRoomPage> {
-  Map<String, dynamic>? _room;
-  Timer? _t;
-  Timer? _anim;
-  bool _rolling = false;
-  bool _busy = false;
-  int _miss = 0;
-  int? _animPoint;
+  late final TruthRoomProvider p;
+  String? _shownError;
 
   @override
-  void initState() { super.initState(); _refresh(); _t = Timer.periodic(const Duration(seconds: 2), (_) => _refresh()); }
-  @override
-  void dispose() { _t?.cancel(); _anim?.cancel(); super.dispose(); }
-
-  Future<void> _refresh() async {
-    final r = await Api.roomStatus(widget.roomId, widget.userKey);
-    if (!mounted) return;
-    if (r['room'] != null) {
-      _miss = 0;
-      setState(() => _room = r['room']);
-    } else {
-      _miss++;
-      if (_miss >= 3) {
-        _t?.cancel();
-        _toast('房间已解散');
-        Navigator.of(context).maybePop();
-      }
-    }
-  }
-
-  List<Map<String, dynamic>> _players() => (_room?['players'] as List? ?? []).cast<Map<String, dynamic>>();
-
-  Map<String, dynamic>? _me() {
-    for (final p in _players()) {
-      if (p['is_ai'] != true && p['uid']?.toString() == widget.userId) return p;
-    }
-    return null;
-  }
-
-  Widget _avOf(Map p, double r) {
-    final img = p['avatar'] as String? ?? '';
-    if (img.isNotEmpty && img.length > 4 && img.contains('base64')) {
-      return CircleAvatar(radius: r, backgroundColor: Colors.black,
-          backgroundImage: MemoryImage(base64Decode(img.split(',').last)));
-    }
-    final name = (p['name'] ?? 'S').toString();
-    return CircleAvatar(radius: r, backgroundColor: Colors.black,
-        child: Text(name.isEmpty ? 'S' : name[0], style: const TextStyle(color: Colors.white, fontSize: 16)));
-  }
-
-  bool _match(dynamic key, Map p) {
-    if (key is List && key.length >= 2) {
-      if (key[0] == 'a') return p['ai_id']?.toString() == key[1].toString();
-      return p['uid']?.toString() == key[1].toString() && p['is_ai'] != true;
-    }
-    return false;
-  }
-
-  Map<String, dynamic>? _byKey(dynamic key) {
-    for (final p in _players()) { if (_match(key, p)) return p; }
-    return null;
-  }
-
-  int? _pointOf(Map p) {
-    final rolls = _room?['rolls'];
-    if (rolls is List) {
-      for (final item in rolls) { if (_match(item['k'], p)) return item['v']; }
-    }
-    return null;
-  }
-
-  Future<void> _start() async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    final r = await Api.gameStart(widget.roomId, widget.userKey);
-    if (mounted) setState(() => _busy = false);
-    if (r['ok'] != true) _toast((r['error'] ?? '开始失败').toString());
-    _refresh();
-  }
-
-  void _toast(String m) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
-  }
-
-  Future<void> _rollTap() async {
-    if (_rolling || _busy) return;
-    setState(() { _rolling = true; _busy = true; });
-    _anim?.cancel();
-    _anim = Timer.periodic(const Duration(milliseconds: 90), (_) {
-      setState(() => _animPoint = 1 + Random().nextInt(6));
-    });
-    final r = await Api.truthOp(widget.roomId, 'roll', widget.userKey);
-    await Future.delayed(const Duration(milliseconds: 700));
-    _anim?.cancel();
-    await _refresh();
-    if (mounted) setState(() { _rolling = false; _busy = false; _animPoint = null; });
-    if (r['ok'] != true) _toast((r['error'] ?? '摇骰失败').toString());
-  }
-
-  Future<void> _op(String action, {int choice = -1, String text = ''}) async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    final r = await Api.truthOp(widget.roomId, action, widget.userKey,
-        choice: choice >= 0 ? choice.toString() : '', text: text);
-    await _refresh();
-    if (mounted) setState(() => _busy = false);
-    if (r['ok'] != true) _toast((r['error'] ?? '操作失败').toString());
-  }
-
-  Future<void> _input() async {
-    final c = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        title: const Text('输入', style: TextStyle(color: Colors.black)),
-        content: TextField(controller: c, autofocus: true, decoration: const InputDecoration(hintText: '输入内容')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确认')),
-        ],
-      ),
+  void initState() {
+    super.initState();
+    p = TruthRoomProvider(
+      roomId: widget.roomId,
+      userKey: widget.userKey,
+      userId: widget.userId,
     );
-    if (ok != true) return;
-    await _op('input', text: c.text.trim());
+    p.addListener(_onChange);
+  }
+
+  @override
+  void dispose() {
+    p.removeListener(_onChange);
+    p.dispose();
+    super.dispose();
+  }
+
+  /// 出错弹一下；房间没了就自己退出去
+  void _onChange() {
+    final e = p.error;
+    if (e == null || e == _shownError || !mounted) return;
+    _shownError = e;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e)));
+    if (e == '房间已解散') {
+      Navigator.of(context).maybePop();
+      return;
+    }
+    p.clearError();
   }
 
   @override
   Widget build(BuildContext context) {
-    final room = _room;
-    if (room == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    final players = _players();
-    final me = _me();
-    final phase = (room['phase'] ?? 'waiting').toString();
-    final round = room['round'] ?? 1;
-    final isHost = players.any((p) => p['host'] == true && p['is_ai'] != true && p['uid']?.toString() == widget.userId);
-    final isWinner = me != null && _match(room['winner'], me);
-    final isLoser = me != null && _match(room['loser'], me);
-    final myPoint = me != null ? _pointOf(me) : null;
-    final lc = room['loser_choice'];
-    final q = room['question'];
-    final a = room['answer'];
-    final dare = room['dare'];
-    final die = _rolling ? (_animPoint ?? 1) : (myPoint ?? 0);
-
     return Scaffold(
-      backgroundColor: const Color(0xFFF2F2F2),
-      appBar: AppBar(
-        backgroundColor: Colors.white, foregroundColor: Colors.black,
-        title: Text('${room['name']} · 真心话', style: const TextStyle(fontSize: 16)),
-        actions: [ if (isHost) IconButton(icon: const Icon(Icons.play_arrow), color: Colors.black, tooltip: '开始/下一局', onPressed: _start) ],
-      ),
-      body: SafeArea(child: Column(children: [
-        // 座位席
-        Container(
-          width: double.infinity, padding: const EdgeInsets.all(12),
-          child: Wrap(spacing: 10, runSpacing: 10, children: players.map((p) {
-            final win = _match(room['winner'], p);
-            final lose = _match(room['loser'], p);
-            final pt = _pointOf(p);
-            final host = p['host'] == true;
-            return Container(
-              width: 66,
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: host ? Colors.black : Colors.black12, width: host ? 1.4 : 1),
-                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 1))],
+      backgroundColor: RoomTheme.bgBottom,
+      body: ListenableBuilder(
+        listenable: p,
+        builder: (context, _) {
+          if (p.loading && p.room == null) {
+            return const Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(RoomTheme.gold),
               ),
-              child: Column(children: [
-                Stack(children: [
-                  _avOf(p, 20),
-                  if (win) const Positioned(top: -2, left: 8, child: _tag('赢', Color(0xFF008877))),
-                  if (lose) const Positioned(top: -2, left: 8, child: _tag('输', Colors.red)),
-                ]),
-                const SizedBox(height: 3),
-                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Flexible(child: Text(p['name'] ?? '', style: const TextStyle(fontSize: 11), overflow: TextOverflow.ellipsis)),
-                  if (host) const Text(' 👑', style: TextStyle(fontSize: 9)),
-                ]),
-                Text(pt == null ? '·' : '$pt', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-              ]));
-          }).toList()),
-        ),
-        // 弹幕卡
-        Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), child: _banner(phase, lc, q, a, dare)),
-        // 大骰子
-        Expanded(child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            width: 130, height: 130,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(26),
-              border: Border.all(color: Colors.black.withOpacity(0.15), width: 1.2),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 12, offset: Offset(0, 4))],
+            );
+          }
+          return Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [RoomTheme.bgTop, RoomTheme.bgMid, RoomTheme.bgBottom],
+              ),
             ),
-            child: Text(_rolling ? '🎲' : (myPoint == null ? '?' : '$die'),
-                style: TextStyle(fontSize: _rolling ? 58 : 52, fontWeight: FontWeight.bold, color: Colors.black)),
-          ),
-          const SizedBox(height: 8),
-          Text(_rolling ? '摇骰中…' : (myPoint == null ? '等待摇骰' : '我的点数'), style: const TextStyle(color: Colors.grey, fontSize: 12)),
-        ]))),
-        // 操作区
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-          child: _actions(phase, isHost, isWinner, isLoser, myPoint, lc, q, a, dare),
-        ),
-        Text('第 $round 局', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-      ])),
-    );
-  }
-
-  Widget _banner(String phase, lc, q, a, dare) {
-    final loserName = _byKey(_room?['loser'])?['name'] ?? '输家';
-    final winnerName = _byKey(_room?['winner'])?['name'] ?? '赢家';
-    String text;
-    if (phase == 'waiting') {
-      text = '等待房主开始，喊上朋友一起摇骰子';
-    } else if (phase == 'roll') {
-      text = '全员摇骰子，点数最大是赢家、最小是输家';
-    } else if (phase == 'choose') {
-      text = '等 $loserName 选真心话 / 大冒险…';
-    } else if (phase == 'question') {
-      text = lc == 'dare'
-          ? '$loserName 选了大冒险，等 $winnerName 出任务…'
-          : '$loserName 选了真心话，等 $winnerName 出题…';
-    } else if (phase == 'answer') {
-      if (q == null) {
-        text = lc == 'dare' ? '等 $winnerName 出任务…' : '等 $winnerName 出题…';
-      } else {
-        text = (lc == 'dare' ? '任务：' : '题目：') + '$q\n请 $loserName ' + (lc == 'dare' ? '执行' : '回答');
-      }
-    } else {
-      if (a != null) text = '回答：$a';
-      else if (dare != null) text = '大冒险：$q\n$loserName ${dare == 'done' ? '已执行' : '稍后执行'}';
-      else if (q != null) text = '本局结束：$q';
-      else text = '本局结束';
-    }
-    if (text.isEmpty) return const SizedBox.shrink();
-    return Container(
-      width: double.infinity, padding: const EdgeInsets.all(12),
-      constraints: const BoxConstraints(minHeight: 44),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.black.withOpacity(0.2)),
+            child: SafeArea(
+              child: Column(
+                children: [
+                  _topBar(),
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (ctx, box) => _ring(ctx, box),
+                    ),
+                  ),
+                  _bottomBar(),
+                ],
+              ),
+            ),
+          );
+        },
       ),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Icon(Icons.campaign, color: Colors.black54, size: 18),
-        const SizedBox(width: 8),
-        Expanded(child: Text(text, style: const TextStyle(color: Colors.black, fontSize: 14))),
-      ]),
     );
   }
 
-  Widget _actions(phase, isHost, isWinner, isLoser, myPoint, lc, q, a, dare) {
-    if (_busy) {
-      return const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)));
-    }
-    if (phase == 'roll') {
-      return Center(child: myPoint == null
-          ? FilledButton.icon(onPressed: _rollTap, style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14)), icon: const Icon(Icons.casino), label: const Text('摇骰子'))
-          : const Text('已摇，等待其他玩家…', style: TextStyle(color: Colors.grey)));
-    }
-    if (phase == 'choose') {
-      if (isLoser) return Row(children: [
-        Expanded(child: FilledButton(onPressed: () => _op('choose', choice: 0), child: const Text('真心话'))),
-        const SizedBox(width: 12),
-        Expanded(child: OutlinedButton(onPressed: () => _op('choose', choice: 1), child: const Text('大冒险'))),
-      ]);
-      return const Center(child: Text('等待输家选择…', style: TextStyle(color: Colors.grey)));
-    }
-    if (phase == 'question') {
-      if (isWinner) return Center(child: FilledButton.icon(onPressed: _input, icon: const Icon(Icons.edit), label: Text(lc == 'dare' ? '输入任务' : '输入问题')));
-      return const Center(child: Text('等待赢家出题…', style: TextStyle(color: Colors.grey)));
-    }
-    if (phase == 'answer') {
-      if (lc == 'truth') {
-        if (isLoser) return Center(child: FilledButton.icon(onPressed: _input, icon: const Icon(Icons.chat), label: const Text('回答问题')));
-        return const Center(child: Text('等待输家回答…', style: TextStyle(color: Colors.grey)));
-      } else {
-        if (isLoser) return Row(children: [
-          Expanded(child: OutlinedButton(onPressed: () => _op('do', choice: 1), child: const Text('稍后执行'))),
-          const SizedBox(width: 12),
-          Expanded(child: FilledButton(onPressed: () => _op('do', choice: 0), child: const Text('我已执行'))),
-        ]);
-        return const Center(child: Text('等待输家执行…', style: TextStyle(color: Colors.grey)));
-      }
-    }
-    if (phase == 'result') {
-      final w = _byKey(_room?['winner'])?['name'] ?? '赢家';
-      final l = _byKey(_room?['loser'])?['name'] ?? '输家';
-      return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('$w 赢  ·  $l 输', style: const TextStyle(color: Colors.black, fontSize: 14)),
-        const SizedBox(height: 4),
-        const Text('本局结束', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 15)),
-        if (isHost) ...[
-          const SizedBox(height: 10),
-          FilledButton.icon(onPressed: _start, icon: const Icon(Icons.replay), label: const Text('下一局')),
-        ],
-      ]));
-    }
-    return const SizedBox.shrink();
-  }
-}
+  // ==================== 顶栏 ====================
 
-class _tag extends StatelessWidget {
-  final String t; final Color c;
-  const _tag(this.t, this.c);
-  @override
-  Widget build(BuildContext c2) => Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-      color: c, child: Text(t, style: const TextStyle(color: Colors.white, fontSize: 9)));
+  Widget _topBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+      child: Container(
+        decoration: RoomTheme.barBox(),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        child: Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.arrow_back_ios_new, size: 17, color: RoomTheme.goldSoft),
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
+            Expanded(
+              child: Column(
+                children: [
+                  Text(
+                    p.roomName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: RoomTheme.goldSoft,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'ID ${p.roomId} · ${_phaseLabel()} · 第 ${p.round} 局',
+                    style: const TextStyle(color: Color.fromRGBO(226, 201, 126, 0.62), fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Text(
+                '${p.players.length}/${p.maxPlayers}',
+                style: const TextStyle(color: RoomTheme.goldSoft, fontSize: 12.5, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _phaseLabel() {
+    switch (p.phase) {
+      case 'roll':
+        return '摇骰子';
+      case 'choose':
+        return '选择';
+      case 'question':
+        return '出题';
+      case 'answer':
+        return '作答';
+      case 'result':
+        return '结果';
+      default:
+        return '等待开局';
+    }
+  }
+
+  // ==================== 环形座位 + 中央书卷 ====================
+
+  Widget _ring(BuildContext context, BoxConstraints c) {
+    final n = p.players.length;
+    final w = c.maxWidth;
+    final h = c.maxHeight;
+    if (n == 0) {
+      return const Center(child: Text('房间里还没有人', style: RoomTheme.onDark));
+    }
+
+    // 人多就把头像缩小，不然一圈挤不开
+    final av = n <= 6 ? 62.0 : (n <= 9 ? 54.0 : 46.0);
+    final slotH = av + 36; // 头像 + 名字 + 状态行
+
+    // 头像是排在一个椭圆上的：
+    //   x = cx + rx·sin(a)，y = cy − ry·cos(a)，a = 2πi/n
+    // 从正上方开始、顺时针一圈。rx 受屏幕宽限制，ry 可以吃满竖直空间（竖屏更高）。
+    final rx = math.max(60.0, (w - av - 36) / 2);
+    final ry = math.max(60.0, (h - slotH - 16) / 2);
+
+    // 书卷先给个大小，再按“别和任何一个头像重叠”自动收缩
+    var sw = math.min(w * 0.58, rx * 1.12);
+    var sh = math.min(h * 0.60, ry * 1.04);
+    for (var guard = 0; guard < 26; guard++) {
+      var clash = false;
+      for (var i = 0; i < n; i++) {
+        final a = 2 * math.pi * i / n;
+        final px = (rx * math.sin(a)).abs();
+        final py = (ry * math.cos(a)).abs();
+        // 头像在 x / y 两个方向上只要有一个出了书卷的边，就不算撞上
+        final dx = (px + av / 2 + 6) - sw / 2;
+        final dy = (py + slotH / 2 + 6) - sh / 2;
+        if (dx < 0 && dy < 0) {
+          clash = true;
+          break;
+        }
+      }
+      if (!clash) break;
+      sw *= 0.95;
+      sh *= 0.95;
+    }
+    sw = math.max(sw, 132);
+    sh = math.max(sh, 168);
+
+    final cx = w / 2;
+    final cy = h / 2;
+
+    final seats = <Widget>[];
+    for (var i = 0; i < n; i++) {
+      final a = 2 * math.pi * i / n;
+      final x = cx + rx * math.sin(a) - av / 2 - 10;
+      final y = cy - ry * math.cos(a) - slotH / 2;
+      final player = p.players[i];
+      seats.add(Positioned(
+        left: x,
+        top: y,
+        width: av + 20,
+        height: slotH,
+        child: Center(
+          child: PlayerAvatar(
+            player: player,
+            p: p,
+            size: av,
+            highlight: p.isActing(player),
+          ),
+        ),
+      ));
+    }
+
+    return Stack(
+      children: [
+        Center(
+          child: SizedBox(
+            width: sw,
+            height: sh,
+            child: ScrollPanel(p: p),
+          ),
+        ),
+        ...seats,
+      ],
+    );
+  }
+
+  // ==================== 底部：操作提示 + 可折叠的“我的信息” ====================
+
+  Widget _bottomBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
+      child: Container(
+        decoration: RoomTheme.barBox(),
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    p.myPoint == null ? '我的点数：—' : '我的点数：${p.myPoint}',
+                    style: const TextStyle(color: RoomTheme.goldSoft, fontSize: 12.5),
+                  ),
+                ),
+                TextButton(
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(0, 30),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: p.togglePrivate,
+                  child: Text(
+                    p.showPrivate ? '收起 ▲' : '我的信息 ▼',
+                    style: const TextStyle(color: RoomTheme.goldSoft, fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+            if (p.showPrivate) _privatePanel(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _privatePanel() {
+    final who = p.isWinner ? '赢家' : (p.isLoser ? '输家' : '围观');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Divider(color: const Color.fromRGBO(201, 162, 39, 0.25), height: 10),
+          _kv('我的身份', who),
+          _kv('本局题目', p.taskId == null ? '还没抽' : '题库 ${p.taskId}'),
+          _kv('房间号', p.roomId),
+          const Padding(
+            padding: EdgeInsets.only(top: 4),
+            child: Text(
+              'AI 玩家由后端驱动，你不能替它操作。',
+              style: TextStyle(color: Color.fromRGBO(226, 201, 126, 0.5), fontSize: 11),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _kv(String k, String v) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 1),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 62,
+              child: Text(k, style: const TextStyle(color: Color.fromRGBO(226, 201, 126, 0.6), fontSize: 11.5)),
+            ),
+            Expanded(
+              child: Text(v, style: const TextStyle(color: RoomTheme.goldSoft, fontSize: 11.5)),
+            ),
+          ],
+        ),
+      );
 }
