@@ -16,15 +16,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 检查补丁是否推齐
+      - name: 有没有补丁要打
         id: check
         run: |
-          need="20261004a-server.py 20261004b-app.py 20261004c-docs.py"
-          ok=yes
-          for f in $need; do
-            if [ ! -f "patch/$f" ]; then echo "缺 $f"; ok=no; fi
-          done
-          echo "ready=$ok" >> "$GITHUB_OUTPUT"
+          if ls patch/*.py >/dev/null 2>&1; then
+            echo "ready=yes" >> "$GITHUB_OUTPUT"
+            ls -1 patch/*.py
+          else
+            echo "ready=no" >> "$GITHUB_OUTPUT"
+            echo "patch/ 里没有补丁，跳过"
+          fi
 
       - name: 依次打补丁
         if: steps.check.outputs.ready == 'yes'
@@ -54,6 +55,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "没有变化，不提交"
           else
-            git commit -m "chore: 应用第一批补丁（题库抽题 / 12人房 / 环形书卷房间页）"
+            git commit -m "chore: 应用补丁"
             git push
           fi
