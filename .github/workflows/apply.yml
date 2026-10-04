@@ -1,0 +1,59 @@
+name: Apply patches
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'patch/**'
+      - '.github/workflows/apply.yml'
+  workflow_dispatch:
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 检查补丁是否推齐
+        id: check
+        run: |
+          need="20261004a-server.py 20261004b-app.py 20261004c-docs.py"
+          ok=yes
+          for f in $need; do
+            if [ ! -f "patch/$f" ]; then echo "缺 $f"; ok=no; fi
+          done
+          echo "ready=$ok" >> "$GITHUB_OUTPUT"
+
+      - name: 依次打补丁
+        if: steps.check.outputs.ready == 'yes'
+        run: |
+          set -e
+          for f in $(ls patch/*.py | sort); do
+            echo "===== $f ====="
+            python3 "$f"
+          done
+
+      - name: 语法自检
+        if: steps.check.outputs.ready == 'yes'
+        run: |
+          set -e
+          python3 -m py_compile server.py tasks.py
+          python3 -c "import ast; [ast.parse(open(f, encoding='utf-8').read()) for f in ['server.py','tasks.py']]; print('Python OK')"
+          ls data/
+
+      - name: 提交结果并清掉补丁
+        if: steps.check.outputs.ready == 'yes'
+        run: |
+          set -e
+          rm -f patch/*.py
+          git config user.name "ai-platform-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "没有变化，不提交"
+          else
+            git commit -m "chore: 应用第一批补丁（题库抽题 / 12人房 / 环形书卷房间页）"
+            git push
+          fi
