@@ -26,8 +26,14 @@ from starlette.responses import JSONResponse
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 from starlette.middleware.base import BaseHTTPMiddleware
-from fastmcp import FastMCP
-from fastmcp.server.dependencies import get_http_headers, get_http_request
+try:
+    from fastmcp import FastMCP
+    from fastmcp.server.dependencies import get_http_headers, get_http_request
+    HAS_MCP = True
+except Exception as _e:
+    # 没装 fastmcp 也能跑：REST + WebSocket 照常，只是 /mcp（AI 接入）这条会关掉
+    print("[warn] fastmcp 没装上，/mcp（AI 接入）会关掉，其他功能正常：", _e)
+    HAS_MCP = False
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "data.db")
@@ -1290,7 +1296,20 @@ async def ws_endpoint(websocket: WebSocket):
                     WS.pop(uid, None)
 
 # ---------------- MCP 工具（fastmcp, 挂 /mcp） ----------------
-mcp = FastMCP("ai-chat")
+if HAS_MCP:
+    mcp = FastMCP("ai-chat")
+else:
+    class _NullMcp:
+        # 没装 fastmcp 时的占位：@mcp.tool() 原样返回函数，什么都不做
+        def tool(self, *a, **k):
+            def deco(f):
+                return f
+            return deco
+
+        def http_app(self, *a, **k):
+            return None
+    mcp = _NullMcp()
+
 BASE = "http://127.0.0.1:" + SELF
 
 def _call(method, path, body=None, q=None):
@@ -1570,14 +1589,19 @@ def ai_game_custom_task(content: str, game: str = "dare", target: str = "ai", ta
 
 # ---------------- app ----------------
 def make_app():
-    mcp_app = mcp.http_app(path="/mcp", transport="streamable-http", stateless_http=True, json_response=True)
     routes = [
         Route("/api/{path:path}", handle, methods=["GET", "POST"]),
         WebSocketRoute("/ws", ws_endpoint),
-        Route("/mcp", mcp_app, methods=["GET", "POST"]),
-        Mount("/public", StaticFiles(directory=os.path.join(BASE_DIR, "public"), html=True)),
     ]
-    app = Starlette(routes=routes, lifespan=mcp_app.lifespan)
+    lifespan = None
+    if HAS_MCP:
+        mcp_app = mcp.http_app(path="/mcp", transport="streamable-http", stateless_http=True, json_response=True)
+        routes.append(Route("/mcp", mcp_app, methods=["GET", "POST"]))
+        lifespan = mcp_app.lifespan
+    else:
+        print("[warn] /mcp 没挂上（缺 fastmcp），AI 接不进来，人跟人照常玩")
+    routes.append(Mount("/public", StaticFiles(directory=os.path.join(BASE_DIR, "public"), html=True)))
+    app = Starlette(routes=routes, lifespan=lifespan)
     app.router.redirect_slashes = False
 
     class NoCacheMiddleware(BaseHTTPMiddleware):
